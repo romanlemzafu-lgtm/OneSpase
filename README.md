@@ -1,79 +1,47 @@
-# OneSpase v0.4.0 — Online Foundation
+# OneSpase v0.5.0
 
-OneSpase — уютная смесь соцсети и мессенджера с собственной визуальной системой.
+OneSpase is a cozy social network + messenger prototype inspired by familiar messenger/social patterns while keeping its own branding and UI.
 
-## Что нового в v0.4
+## v0.5 focus
 
-- новый тёмный интерфейс с фирменным фиолетовым акцентом;
-- 5 основных разделов: Лента, Чаты, Люди, События, Профиль;
-- новый экран диалога;
-- новый профиль и отдельный экран настроек;
-- регистрация/вход по email OTP-коду;
-- создание профиля после подтверждения почты;
-- поиск пользователей по имени и `@username`;
-- демо-режим, если Supabase ещё не подключён;
-- SQL-схема Supabase для профилей, постов, лайков, комментариев, подписок, диалогов, сообщений и уведомлений;
-- GitHub Actions для сборки APK с Supabase Secrets.
+This release turns the messenger layer into a real online system:
 
-## Важно про эту APK
+- guest online accounts;
+- Google OAuth entry point;
+- profiles + unique usernames;
+- people search;
+- direct chats;
+- Realtime messages;
+- editing/deleting own messages;
+- read state;
+- verification badges;
+- protected Owner Panel.
 
-Если `SUPABASE_URL` и `SUPABASE_ANON_KEY` не заданы, приложение запускается в демо-режиме. Интерфейс, локальная лента, комментарии и локальные чаты работают, но email-коды и серверный поиск требуют Supabase.
+## Before building
 
-## Подключение Supabase
+1. Create/configure Supabase.
+2. If your v0.4 database already exists, run:
+   `supabase/v0_5_migration.sql`
+3. Enable Anonymous Sign-Ins in Supabase Authentication settings.
+4. Add GitHub repository secrets:
+   - `SUPABASE_URL`
+   - `SUPABASE_ANON_KEY`
+5. Upload the project to GitHub and let Actions build the APK.
 
-### 1. Создай проект Supabase
+## Google login
 
-После создания открой SQL Editor и выполни:
+The button is implemented, but Google sign-in only works after the Google provider is enabled in Supabase and Google OAuth credentials are configured. The APK already contains the `onespase://login-callback` deep link through GitHub Actions.
 
-`supabase/schema.sql`
+## Owner Panel
 
-### 2. Включи код вместо magic link
+The panel is hidden until your account UUID is registered as owner in `public.app_admins`.
 
-В Supabase открой Authentication -> Email Templates -> Magic Link / OTP.
-В шаблоне должен использоваться токен:
+After you create your account, copy your Account ID from OneSpase Settings or Supabase Authentication -> Users and run:
 
-```html
-<h2>Код OneSpase</h2>
-<p>Введи этот код в приложении:</p>
-<h1>{{ .Token }}</h1>
+```sql
+insert into public.app_admins (user_id, role)
+values ('YOUR-UUID-HERE'::uuid, 'owner')
+on conflict (user_id) do update set role = 'owner';
 ```
 
-### 3. Добавь GitHub Secrets
-
-В репозитории OneSpase:
-
-Settings -> Secrets and variables -> Actions -> New repository secret
-
-Создай два секрета:
-
-- `SUPABASE_URL` — Project URL из Supabase
-- `SUPABASE_ANON_KEY` — anon/publishable key из Supabase
-
-Никогда не добавляй `service_role` key в мобильное приложение или GitHub workflow для APK.
-
-### 4. Собери APK
-
-После push в `main` workflow `Build OneSpase APK` запустится автоматически.
-
-Actions -> Build OneSpase APK -> успешный запуск -> Artifacts -> `OneSpase-v0.4.0-APK`.
-
-## Локальный запуск
-
-```bash
-flutter pub get
-flutter run \
-  --dart-define=SUPABASE_URL="YOUR_URL" \
-  --dart-define=SUPABASE_ANON_KEY="YOUR_ANON_KEY"
-```
-
-Без этих параметров можно использовать кнопку `Открыть демо OneSpase`.
-
-## Следующий этап
-
-- настоящий список диалогов из Supabase;
-- Realtime-сообщения между двумя телефонами;
-- заявки в друзья / подписки;
-- серверная лента;
-- загрузка аватарок и фото;
-- push-уведомления;
-- затем голосовые сообщения и WebRTC-звонки.
+Do not put an owner password or service-role key inside the APK.

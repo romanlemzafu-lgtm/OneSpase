@@ -1,22 +1,13 @@
-# Как обновить репозиторий OneSpase с v0.3 на v0.4
+# Обновление OneSpase до v0.5
 
-Самый простой вариант с ПК:
+1. Распакуй `OneSpase-v0.5.0-source.zip`.
+2. В репозитории OneSpase замени текущие файлы содержимым ZIP.
+3. Не забудь скрытую папку `.github`.
+4. В Supabase SQL Editor запусти `supabase/v0_5_migration.sql`.
+5. В Supabase включи Anonymous Sign-Ins.
+6. Проверь GitHub Secrets: `SUPABASE_URL` и `SUPABASE_ANON_KEY`.
+7. Commit changes в `main`.
+8. Открой Actions -> `Build OneSpase APK`.
+9. После зелёной галочки скачай artifact `OneSpase-v0.5.0-APK`.
 
-1. Распакуй `OneSpase-v0.4.0-source.zip`.
-2. В GitHub открой репозиторий OneSpase.
-3. Замени содержимое `lib/` файлами из нового ZIP.
-4. Замени `pubspec.yaml`.
-5. Добавь папку `supabase/`.
-6. Замени `.github/workflows/build-apk.yml` и `release-apk.yml`.
-7. Оставь `assets/` из ZIP.
-8. Commit changes.
-9. Открой Actions и следи за `Build OneSpase APK`.
-
-Если GitHub через браузер снова не загрузит `.github`, открой каждый workflow отдельно через:
-
-Add file -> Create new file
-
-и используй пути:
-
-- `.github/workflows/build-apk.yml`
-- `.github/workflows/release-apk.yml`
+Google-вход можно настроить позже. Для первого онлайн-теста двух телефонов достаточно гостевого входа.

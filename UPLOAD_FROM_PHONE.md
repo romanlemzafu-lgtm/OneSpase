@@ -1,12 +1,13 @@
-# Как загрузить OneSpase в GitHub с телефона
+# Загрузка OneSpase v0.5 в GitHub
 
-1. Распакуй ZIP на телефоне.
-2. Открой репозиторий `OneSpase` на github.com.
-3. Нажми **Add file -> Upload files**.
-4. Загрузи содержимое распакованной папки, сохраняя структуру каталогов.
-5. Сделай commit в ветку `main`.
-6. Открой вкладку **Actions**.
-7. Workflow **Build OneSpase APK** должен запуститься автоматически.
-8. После успешной сборки открой запуск и скачай artifact `OneSpase-v0.3.1-APK`.
+С ПК удобнее, но через браузер тоже можно:
 
-Важно: папка `.github/workflows` должна попасть в репозиторий — именно там лежит автоматическая сборка APK.
+1. Распакуй ZIP.
+2. GitHub -> репозиторий OneSpase -> Add file -> Upload files.
+3. Загрузи содержимое папки, а не сам ZIP.
+4. Убедись, что `.github/workflows/build-apk.yml` существует.
+5. Commit changes в `main`.
+6. Вкладка Actions -> Build OneSpase APK.
+7. После успешной сборки скачай artifact `OneSpase-v0.5.0-APK`.
+
+До загрузки желательно применить `supabase/v0_5_migration.sql` в Supabase.

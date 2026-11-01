@@ -1,18 +1,22 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import 'models/chat_message.dart';
 import 'models/local_post.dart';
+import 'models/remote_chat.dart';
 import 'models/social_profile.dart';
 import 'services/local_store.dart';
 import 'services/supabase_service.dart';
 
-enum AuthStep { email, otp, profile }
+enum AuthStep { choose, profile }
 
 class AppController extends ChangeNotifier {
   AppController({required this.supabase});
 
   final SupabaseService supabase;
   final LocalStore _store = LocalStore();
+  StreamSubscription<void>? _authSubscription;
 
   static const _userKey = 'onespase_user_name';
   static const _handleKey = 'onespase_user_handle';
@@ -27,13 +31,17 @@ class AppController extends ChangeNotifier {
   String? userHandle;
   String bio = 'Моё пространство в OneSpase 🚀';
   String status = 'В сети';
+  String verification = 'none';
   DateTime? joinedAt;
 
-  String pendingEmail = '';
   String? authError;
   bool authBusy = false;
   bool demoSession = false;
-  AuthStep authStep = AuthStep.email;
+  bool isOwner = false;
+  AuthStep authStep = AuthStep.choose;
+
+  List<RemoteConversation> remoteConversations = const [];
+  bool conversationsBusy = false;
 
   final List<LocalPost> posts = [];
   final Map<String, List<ChatMessage>> chats = {};
@@ -45,8 +53,10 @@ class AppController extends ChangeNotifier {
   };
 
   bool get onlineConfigured => supabase.enabled;
-  bool get isSignedIn =>
-      demoSession || (supabase.currentSession != null && userName != null);
+  String? get currentUserId => supabase.currentUserId;
+  bool get isOnlineAccount =>
+      supabase.enabled && supabase.currentSession != null && !demoSession;
+  bool get isSignedIn => demoSession || (isOnlineAccount && userName != null);
 
   final List<SocialProfile> demoPeople = const [
     SocialProfile(
@@ -56,6 +66,7 @@ class AppController extends ChangeNotifier {
       status: 'Слушаю музыку',
       bio: 'Тут будет профиль настоящего пользователя.',
       online: true,
+      verification: 'blue',
     ),
     SocialProfile(
       id: 'demo_2',
@@ -64,6 +75,7 @@ class AppController extends ChangeNotifier {
       status: 'Работаю',
       bio: 'OneSpase beta',
       online: false,
+      verification: 'purple',
     ),
     SocialProfile(
       id: 'demo_3',
@@ -72,6 +84,7 @@ class AppController extends ChangeNotifier {
       status: 'Строим новое пространство 🚀',
       bio: 'Официальный профиль разработки.',
       online: true,
+      verification: 'red',
     ),
   ];
 
@@ -86,106 +99,64 @@ class AppController extends ChangeNotifier {
 
     await _loadLocalContent();
 
-    if (supabase.enabled && supabase.currentSession != null) {
-      final profile = await supabase.loadMyProfile();
-      if (profile == null) {
+    if (supabase.enabled) {
+      _authSubscription ??= supabase.authSessionChanges.listen((_) async {
+        await _handleOnlineSession();
+      });
+      await _handleOnlineSession();
+    }
+
+    notifyListeners();
+  }
+
+  Future<void> _handleOnlineSession() async {
+    if (!supabase.enabled || supabase.currentSession == null) {
+      if (!demoSession) {
         userName = null;
         userHandle = null;
-        authStep = AuthStep.profile;
-      } else {
-        await _applyProfile(profile);
+        verification = 'none';
+        isOwner = false;
+        authStep = AuthStep.choose;
       }
-    }
-
-    notifyListeners();
-  }
-
-  Future<void> _loadLocalContent() async {
-    final storedPosts = await _store.getJsonList(_postsKey);
-    if (storedPosts == null) {
-      posts.addAll(_defaultPosts());
-      await _savePosts();
-    } else {
-      posts
-        ..clear()
-        ..addAll(
-          storedPosts.map(
-            (item) => LocalPost.fromJson(
-              Map<String, dynamic>.from(item as Map),
-            ),
-          ),
-        );
-    }
-
-    final storedMessages = await _store.getJsonMap(_messagesKey);
-    if (storedMessages == null) {
-      chats.addAll(_defaultChats());
-      await _saveChats();
-    } else {
-      chats.clear();
-      for (final entry in storedMessages.entries) {
-        final items = entry.value as List<dynamic>;
-        chats[entry.key] = items
-            .map(
-              (item) => ChatMessage.fromJson(
-                Map<String, dynamic>.from(item as Map),
-              ),
-            )
-            .toList();
-      }
-    }
-  }
-
-  Future<void> requestEmailOtp(String email) async {
-    final clean = email.trim().toLowerCase();
-    if (!clean.contains('@') || !clean.contains('.')) {
-      authError = 'Проверь адрес почты.';
       notifyListeners();
       return;
     }
-
-    if (!supabase.enabled) {
-      authError = 'Онлайн-сервер ещё не подключён к этой APK. Можно открыть демо.';
-      notifyListeners();
-      return;
-    }
-
-    authBusy = true;
-    authError = null;
-    notifyListeners();
 
     try {
-      await supabase.sendEmailOtp(clean);
-      pendingEmail = clean;
-      authStep = AuthStep.otp;
-    } catch (error) {
-      authError = _friendlyError(error);
-    } finally {
-      authBusy = false;
-      notifyListeners();
-    }
-  }
-
-  Future<void> verifyOtp(String token) async {
-    final clean = token.replaceAll(RegExp(r'\D'), '');
-    if (clean.length < 6) {
-      authError = 'Введи код из письма полностью.';
-      notifyListeners();
-      return;
-    }
-
-    authBusy = true;
-    authError = null;
-    notifyListeners();
-
-    try {
-      await supabase.verifyEmailOtp(pendingEmail, clean);
       final profile = await supabase.loadMyProfile();
-      if (profile == null || profile.username.trim().isEmpty) {
+      if (profile == null ||
+          profile.displayName == 'Новый пользователь' ||
+          profile.username.startsWith('user_')) {
+        demoSession = false;
         authStep = AuthStep.profile;
+        userName = null;
+        userHandle = null;
       } else {
         await _applyProfile(profile);
+        await supabase.setPresence(true);
+        await refreshConversations();
       }
+      isOwner = await supabase.isOwner();
+    } catch (error) {
+      authError = _friendlyError(error);
+    }
+    notifyListeners();
+  }
+
+  Future<void> startGuest() async {
+    if (!supabase.enabled) {
+      authError = 'Сначала подключи Supabase к APK.';
+      notifyListeners();
+      return;
+    }
+
+    authBusy = true;
+    authError = null;
+    notifyListeners();
+    try {
+      await supabase.signInAnonymously();
+      demoSession = false;
+      authStep = AuthStep.profile;
     } catch (error) {
       authError = _friendlyError(error);
     } finally {
@@ -194,15 +165,24 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  Future<void> resendOtp() async {
-    if (pendingEmail.isEmpty) return;
-    await requestEmailOtp(pendingEmail);
-  }
+  Future<void> startGoogle() async {
+    if (!supabase.enabled) {
+      authError = 'Сначала подключи Supabase к APK.';
+      notifyListeners();
+      return;
+    }
 
-  void backToEmail() {
-    authStep = AuthStep.email;
+    authBusy = true;
     authError = null;
     notifyListeners();
+    try {
+      await supabase.signInWithGoogle();
+    } catch (error) {
+      authError = _friendlyError(error);
+    } finally {
+      authBusy = false;
+      notifyListeners();
+    }
   }
 
   Future<void> completeProfile({
@@ -226,9 +206,8 @@ class AppController extends ChangeNotifier {
     authBusy = true;
     authError = null;
     notifyListeners();
-
     try {
-      if (supabase.enabled && supabase.currentSession != null) {
+      if (isOnlineAccount) {
         await supabase.saveMyProfile(
           displayName: cleanedName,
           username: cleanedHandle,
@@ -241,7 +220,14 @@ class AppController extends ChangeNotifier {
       userHandle = cleanedHandle;
       status = newStatus.trim().isEmpty ? 'В OneSpase' : newStatus.trim();
       joinedAt ??= DateTime.now();
+      demoSession = !isOnlineAccount;
       await _saveProfileLocally();
+
+      if (isOnlineAccount) {
+        final profile = await supabase.loadMyProfile();
+        if (profile != null) await _applyProfile(profile);
+        isOwner = await supabase.isOwner();
+      }
     } catch (error) {
       authError = _friendlyError(error);
     } finally {
@@ -255,6 +241,7 @@ class AppController extends ChangeNotifier {
     userName ??= 'Рома';
     userHandle ??= 'roman';
     joinedAt ??= DateTime.now();
+    verification = 'purple';
     await _store.setString(_demoKey, 'true');
     await _saveProfileLocally();
     notifyListeners();
@@ -266,8 +253,10 @@ class AppController extends ChangeNotifier {
     userName = null;
     userHandle = null;
     joinedAt = null;
-    authStep = AuthStep.email;
-    pendingEmail = '';
+    verification = 'none';
+    isOwner = false;
+    remoteConversations = const [];
+    authStep = AuthStep.choose;
     authError = null;
     await _store.remove(_demoKey);
     await _store.remove(_userKey);
@@ -290,28 +279,111 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<List<SocialProfile>> searchPeople(String query) async {
-    final clean = query.trim().toLowerCase().replaceAll('@', '');
-    if (clean.isEmpty) return demoPeople;
+  Future<void> setPresence(bool online) async {
+    if (!isOnlineAccount) return;
+    try {
+      await supabase.setPresence(online);
+    } catch (_) {}
+  }
 
-    if (supabase.enabled && supabase.currentSession != null) {
+  Future<List<SocialProfile>> searchPeople(
+    String query, {
+    bool includeSelf = false,
+  }) async {
+    final clean = query.trim().toLowerCase().replaceAll('@', '');
+
+    if (isOnlineAccount) {
       try {
-        return await supabase.searchProfiles(clean);
-      } catch (_) {
-        // Если сервер временно недоступен, интерфейс всё равно остаётся живым.
+        return await supabase.searchProfiles(clean, includeSelf: includeSelf);
+      } catch (error) {
+        authError = _friendlyError(error);
       }
     }
 
+    if (clean.isEmpty) return demoPeople;
     return demoPeople.where((profile) {
       return profile.displayName.toLowerCase().contains(clean) ||
           profile.username.toLowerCase().contains(clean);
     }).toList();
   }
 
+  Future<String?> startDirectChat(SocialProfile profile) async {
+    if (!isOnlineAccount) return null;
+    try {
+      final id = await supabase.startDirectConversation(profile.id);
+      await refreshConversations();
+      return id;
+    } catch (error) {
+      authError = _friendlyError(error);
+      notifyListeners();
+      return null;
+    }
+  }
+
+  Future<void> refreshConversations() async {
+    if (!isOnlineAccount) return;
+    conversationsBusy = true;
+    notifyListeners();
+    try {
+      remoteConversations = await supabase.listConversations();
+    } catch (error) {
+      authError = _friendlyError(error);
+    } finally {
+      conversationsBusy = false;
+      notifyListeners();
+    }
+  }
+
+  Stream<List<RemoteMessage>> remoteMessageStream(String conversationId) {
+    return supabase.streamMessages(conversationId);
+  }
+
+  Future<void> sendRemoteMessage(String conversationId, String text) async {
+    final clean = text.trim();
+    if (clean.isEmpty) return;
+    await supabase.sendMessage(conversationId, clean);
+  }
+
+  Future<void> editRemoteMessage(String messageId, String text) async {
+    final clean = text.trim();
+    if (clean.isEmpty) return;
+    await supabase.editMessage(messageId, clean);
+  }
+
+  Future<void> deleteRemoteMessage(String messageId) async {
+    await supabase.deleteMessage(messageId);
+  }
+
+  Future<void> markConversationRead(String conversationId) async {
+    try {
+      await supabase.markConversationRead(conversationId);
+    } catch (_) {}
+  }
+
+  Future<void> setVerificationBadge({
+    required SocialProfile profile,
+    required String badge,
+    String? reason,
+  }) async {
+    if (!isOwner) throw StateError('Доступ только владельцу OneSpase.');
+    await supabase.setVerificationBadge(
+      targetUserId: profile.id,
+      badge: badge,
+      reason: reason,
+    );
+    if (profile.id == currentUserId) {
+      verification = badge;
+      notifyListeners();
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> loadBadgeAudit() {
+    return supabase.badgeAudit();
+  }
+
   Future<void> addPost(String text) async {
     final cleaned = text.trim();
     if (cleaned.isEmpty || userName == null) return;
-
     posts.insert(
       0,
       LocalPost(
@@ -372,9 +444,47 @@ class AppController extends ChangeNotifier {
     userHandle = profile.username;
     status = profile.status;
     bio = profile.bio.isEmpty ? bio : profile.bio;
+    verification = profile.verification;
     joinedAt ??= DateTime.now();
     demoSession = false;
+    await _store.remove(_demoKey);
     await _saveProfileLocally();
+  }
+
+  Future<void> _loadLocalContent() async {
+    final storedPosts = await _store.getJsonList(_postsKey);
+    if (storedPosts == null) {
+      posts.addAll(_defaultPosts());
+      await _savePosts();
+    } else {
+      posts
+        ..clear()
+        ..addAll(
+          storedPosts.map(
+            (item) => LocalPost.fromJson(
+              Map<String, dynamic>.from(item as Map),
+            ),
+          ),
+        );
+    }
+
+    final storedMessages = await _store.getJsonMap(_messagesKey);
+    if (storedMessages == null) {
+      chats.addAll(_defaultChats());
+      await _saveChats();
+    } else {
+      chats.clear();
+      for (final entry in storedMessages.entries) {
+        final items = entry.value as List<dynamic>;
+        chats[entry.key] = items
+            .map(
+              (item) => ChatMessage.fromJson(
+                Map<String, dynamic>.from(item as Map),
+              ),
+            )
+            .toList();
+      }
+    }
   }
 
   Future<void> _saveProfileLocally() async {
@@ -388,8 +498,7 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> _syncProfileIfOnline() async {
-    if (!supabase.enabled || supabase.currentSession == null) return;
-    if (userName == null || userHandle == null) return;
+    if (!isOnlineAccount || userName == null || userHandle == null) return;
     try {
       await supabase.saveMyProfile(
         displayName: userName!,
@@ -410,11 +519,17 @@ class AppController extends ChangeNotifier {
 
   String _friendlyError(Object error) {
     final text = error.toString();
-    if (text.toLowerCase().contains('rate')) {
+    final low = text.toLowerCase();
+    if (low.contains('anonymous') && low.contains('disabled')) {
+      return 'В Supabase нужно включить Anonymous Sign-Ins.';
+    }
+    if (low.contains('provider') && low.contains('disabled')) {
+      return 'Этот способ входа ещё не включён в Supabase.';
+    }
+    if (low.contains('rate')) {
       return 'Слишком много попыток. Попробуй чуть позже.';
     }
-    if (text.toLowerCase().contains('duplicate') ||
-        text.toLowerCase().contains('unique')) {
+    if (low.contains('duplicate') || low.contains('unique')) {
       return 'Такой @username уже занят.';
     }
     return text.replaceFirst('Exception: ', '');
@@ -438,18 +553,18 @@ class AppController extends ChangeNotifier {
           id: 'welcome',
           author: 'OneSpase',
           text:
-              'Добро пожаловать в OneSpase 🚀 Лента, профили и чаты уже собираются в одну уютную соцсеть.',
+              'Добро пожаловать в OneSpase 🚀 v0.5 превращает прототип в настоящий онлайн-мессенджер.',
           createdAt: DateTime.now().subtract(const Duration(minutes: 18)),
-          likes: 12,
-          comments: ['Ждём онлайн-версию!'],
+          likes: 15,
+          comments: ['Погнали!'],
         ),
         LocalPost(
           id: 'dev_post',
           author: 'OneSpase Dev',
           text:
-              'v0.4: почта + код, поиск людей, новая навигация и подготовка к настоящим чатам.',
+              'Новая иконка, гостевой вход, Google OAuth, реальные личные сообщения и система галочек.',
           createdAt: DateTime.now().subtract(const Duration(hours: 2)),
-          likes: 8,
+          likes: 11,
         ),
       ];
 
@@ -457,7 +572,7 @@ class AppController extends ChangeNotifier {
         'alex': [
           ChatMessage(
             id: 'a1',
-            text: 'Йо! Новый стиль OneSpase реально уютный.',
+            text: 'Йо! Это демо-чат. Онлайн-чаты появятся после подключения Supabase.',
             sentAt: DateTime.now().subtract(const Duration(minutes: 12)),
             fromMe: false,
           ),
@@ -465,7 +580,7 @@ class AppController extends ChangeNotifier {
         'dev': [
           ChatMessage(
             id: 'd1',
-            text: 'v0.4 уже в разработке 🚀',
+            text: 'v0.5 уже тут 🚀',
             sentAt: DateTime.now().subtract(const Duration(hours: 1)),
             fromMe: false,
           ),
@@ -473,10 +588,16 @@ class AppController extends ChangeNotifier {
         'team': [
           ChatMessage(
             id: 't1',
-            text: 'Следом — серверные сообщения и друзья.',
+            text: 'Owner Panel и галочки защищены на стороне базы.',
             sentAt: DateTime.now().subtract(const Duration(hours: 3)),
             fromMe: false,
           ),
         ],
       };
+
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    super.dispose();
+  }
 }

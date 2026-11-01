@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
 import '../../app_controller.dart';
@@ -16,8 +14,7 @@ class AuthFlowScreen extends StatelessWidget {
       animation: controller,
       builder: (context, _) {
         return switch (controller.authStep) {
-          AuthStep.email => _EmailStep(controller: controller),
-          AuthStep.otp => _OtpStep(controller: controller),
+          AuthStep.choose => _ChooseStep(controller: controller),
           AuthStep.profile => _ProfileStep(controller: controller),
         };
       },
@@ -30,13 +27,11 @@ class _AuthFrame extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.child,
-    this.leading,
   });
 
   final String title;
   final String subtitle;
   final Widget child;
-  final Widget? leading;
 
   @override
   Widget build(BuildContext context) {
@@ -50,26 +45,30 @@ class _AuthFrame extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (leading != null) ...[
-                    Align(alignment: Alignment.centerLeft, child: leading!),
-                    const SizedBox(height: 14),
-                  ],
                   Center(
                     child: Container(
-                      width: 86,
-                      height: 86,
+                      width: 108,
+                      height: 108,
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(28),
-                        color: OneSpaseTheme.surface,
+                        borderRadius: BorderRadius.circular(32),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x447A3CFF),
+                            blurRadius: 30,
+                            spreadRadius: 2,
+                          ),
+                        ],
                       ),
-                      padding: const EdgeInsets.all(14),
-                      child: Image.asset(
-                        'assets/images/onespase_icon.png',
-                        fit: BoxFit.contain,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(32),
+                        child: Image.asset(
+                          'assets/images/onespase_icon.png',
+                          fit: BoxFit.cover,
+                        ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 26),
+                  const SizedBox(height: 28),
                   Text(
                     title,
                     textAlign: TextAlign.center,
@@ -99,189 +98,69 @@ class _AuthFrame extends StatelessWidget {
   }
 }
 
-class _EmailStep extends StatefulWidget {
-  const _EmailStep({required this.controller});
+class _ChooseStep extends StatelessWidget {
+  const _ChooseStep({required this.controller});
   final AppController controller;
-
-  @override
-  State<_EmailStep> createState() => _EmailStepState();
-}
-
-class _EmailStepState extends State<_EmailStep> {
-  final _email = TextEditingController();
-
-  @override
-  void dispose() {
-    _email.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
     return _AuthFrame(
       title: 'Добро пожаловать в OneSpase',
-      subtitle: widget.controller.onlineConfigured
-          ? 'Введи почту — мы отправим одноразовый код для входа или регистрации.'
-          : 'Онлайн-сервер ещё не подключён к этой сборке. Интерфейс можно открыть в демо-режиме.',
+      subtitle: controller.onlineConfigured
+          ? 'Вход без паролей: Google или быстрый гостевой аккаунт.'
+          : 'Эта APK пока без Supabase. Можно открыть демо-интерфейс.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          TextField(
-            controller: _email,
-            keyboardType: TextInputType.emailAddress,
-            autocorrect: false,
-            textInputAction: TextInputAction.done,
-            decoration: const InputDecoration(
-              labelText: 'Почта',
-              hintText: 'name@example.com',
-              prefixIcon: Icon(Icons.alternate_email_rounded),
-            ),
-            onSubmitted: (_) => _send(),
-          ),
-          if (widget.controller.authError != null) ...[
-            const SizedBox(height: 12),
-            _ErrorBox(text: widget.controller.authError!),
-          ],
-          const SizedBox(height: 16),
           FilledButton.icon(
-            onPressed: widget.controller.authBusy ? null : _send,
-            icon: widget.controller.authBusy
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.mail_outline_rounded),
-            label: const Text('Получить код'),
+            onPressed: controller.authBusy || !controller.onlineConfigured
+                ? null
+                : controller.startGoogle,
+            icon: const Icon(Icons.g_mobiledata_rounded, size: 28),
+            label: const Padding(
+              padding: EdgeInsets.symmetric(vertical: 14),
+              child: Text('Продолжить с Google'),
+            ),
           ),
           const SizedBox(height: 12),
           OutlinedButton.icon(
-            onPressed: widget.controller.authBusy
+            onPressed: controller.authBusy || !controller.onlineConfigured
                 ? null
-                : () => widget.controller.startDemo(),
-            icon: const Icon(Icons.rocket_launch_outlined),
-            label: const Text('Открыть демо OneSpase'),
+                : controller.startGuest,
+            icon: const Icon(Icons.person_outline_rounded),
+            label: const Padding(
+              padding: EdgeInsets.symmetric(vertical: 14),
+              child: Text('Войти как гость'),
+            ),
           ),
+          const SizedBox(height: 12),
+          TextButton.icon(
+            onPressed: controller.authBusy ? null : controller.startDemo,
+            icon: const Icon(Icons.rocket_launch_outlined),
+            label: const Text('Открыть демо'),
+          ),
+          if (controller.authBusy) ...[
+            const SizedBox(height: 18),
+            const Center(child: CircularProgressIndicator()),
+          ],
+          if (controller.authError != null) ...[
+            const SizedBox(height: 14),
+            _ErrorBox(text: controller.authError!),
+          ],
           const SizedBox(height: 18),
           const Text(
-            'Пароль не нужен: вход будет подтверждаться кодом из письма.',
+            'Гостевой аккаунт работает как настоящий онлайн-аккаунт, но его нельзя восстановить после удаления приложения или выхода. Позже его можно будет привязать к Google.',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: OneSpaseTheme.textSecondary,
-              fontSize: 13,
+              fontSize: 12,
+              height: 1.35,
             ),
           ),
         ],
       ),
     );
   }
-
-  Future<void> _send() => widget.controller.requestEmailOtp(_email.text);
-}
-
-class _OtpStep extends StatefulWidget {
-  const _OtpStep({required this.controller});
-  final AppController controller;
-
-  @override
-  State<_OtpStep> createState() => _OtpStepState();
-}
-
-class _OtpStepState extends State<_OtpStep> {
-  final _code = TextEditingController();
-  int _seconds = 60;
-  Timer? _timer;
-
-  @override
-  void initState() {
-    super.initState();
-    _startTimer();
-  }
-
-  void _startTimer() {
-    _seconds = 60;
-    _timer?.cancel();
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) return;
-      if (_seconds <= 1) {
-        timer.cancel();
-        setState(() => _seconds = 0);
-      } else {
-        setState(() => _seconds--);
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    _code.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return _AuthFrame(
-      leading: IconButton.filledTonal(
-        onPressed: widget.controller.backToEmail,
-        icon: const Icon(Icons.arrow_back_rounded),
-      ),
-      title: 'Проверь почту',
-      subtitle: 'Код отправлен на ${widget.controller.pendingEmail}',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          TextField(
-            controller: _code,
-            keyboardType: TextInputType.number,
-            maxLength: 8,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 8,
-            ),
-            decoration: const InputDecoration(
-              counterText: '',
-              hintText: '000000',
-            ),
-            onSubmitted: (_) => _verify(),
-          ),
-          if (widget.controller.authError != null) ...[
-            const SizedBox(height: 12),
-            _ErrorBox(text: widget.controller.authError!),
-          ],
-          const SizedBox(height: 16),
-          FilledButton(
-            onPressed: widget.controller.authBusy ? null : _verify,
-            child: widget.controller.authBusy
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Подтвердить'),
-          ),
-          const SizedBox(height: 12),
-          TextButton(
-            onPressed: _seconds == 0 && !widget.controller.authBusy
-                ? () async {
-                    await widget.controller.resendOtp();
-                    _startTimer();
-                  }
-                : null,
-            child: Text(
-              _seconds == 0
-                  ? 'Отправить код ещё раз'
-                  : 'Повторная отправка через $_seconds сек.',
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _verify() => widget.controller.verifyOtp(_code.text);
 }
 
 class _ProfileStep extends StatefulWidget {
@@ -308,8 +187,8 @@ class _ProfileStepState extends State<_ProfileStep> {
   @override
   Widget build(BuildContext context) {
     return _AuthFrame(
-      title: 'Создай профиль',
-      subtitle: 'Последний шаг — имя, уникальный @username и статус.',
+      title: 'Создай своё пространство',
+      subtitle: 'Выбери имя, уникальный @username и короткий статус.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -328,7 +207,7 @@ class _ProfileStepState extends State<_ProfileStep> {
             decoration: const InputDecoration(
               labelText: '@username',
               prefixText: '@',
-              prefixIcon: Icon(Icons.alternate_email_rounded),
+              helperText: 'Латиница, цифры и _',
             ),
           ),
           const SizedBox(height: 12),
@@ -345,18 +224,21 @@ class _ProfileStepState extends State<_ProfileStep> {
             const SizedBox(height: 12),
             _ErrorBox(text: widget.controller.authError!),
           ],
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           FilledButton.icon(
-            onPressed: widget.controller.authBusy ? null : _finish,
-            icon: const Icon(Icons.rocket_launch_rounded),
-            label: const Text('Войти в OneSpase'),
+            onPressed: widget.controller.authBusy ? null : _save,
+            icon: const Icon(Icons.arrow_forward_rounded),
+            label: const Padding(
+              padding: EdgeInsets.symmetric(vertical: 14),
+              child: Text('В OneSpase'),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _finish() => widget.controller.completeProfile(
+  Future<void> _save() => widget.controller.completeProfile(
         name: _name.text,
         handle: _handle.text,
         newStatus: _status.text,
@@ -370,18 +252,15 @@ class _ErrorBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
-        color: OneSpaseTheme.danger.withValues(alpha: 0.12),
+        color: const Color(0x22FF5166),
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0x55FF5166)),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.error_outline_rounded, color: OneSpaseTheme.danger),
-          const SizedBox(width: 10),
-          Expanded(child: Text(text)),
-        ],
+      child: Text(
+        text,
+        style: const TextStyle(color: Color(0xFFFFA5B0), height: 1.35),
       ),
     );
   }

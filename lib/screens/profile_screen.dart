@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app_controller.dart';
 import '../theme/onespase_theme.dart';
+import '../widgets/verification_badge.dart';
 import 'settings_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
@@ -37,7 +38,6 @@ class ProfileScreen extends StatelessWidget {
                   },
                   icon: const Icon(Icons.settings_outlined),
                 ),
-                const SizedBox(width: 4),
               ],
             ),
             SliverPadding(
@@ -81,12 +81,24 @@ class ProfileScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 16),
                     Center(
-                      child: Text(
-                        name,
-                        style: const TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.w900,
-                        ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              name,
+                              style: const TextStyle(
+                                fontSize: 26,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          VerificationBadge(
+                            type: controller.verification,
+                            size: 24,
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 3),
@@ -114,14 +126,6 @@ class ProfileScreen extends StatelessWidget {
                       children: [
                         Expanded(
                           child: _ProfileButton(
-                            icon: Icons.photo_camera_outlined,
-                            label: 'Фото',
-                            onTap: () => _planned(context, 'Аватарки'),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _ProfileButton(
                             icon: Icons.edit_rounded,
                             label: 'Изменить',
                             onTap: () => _editProfile(context),
@@ -144,77 +148,55 @@ class ProfileScreen extends StatelessWidget {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 18),
+                    const SizedBox(height: 14),
                     Card(
                       child: Padding(
                         padding: const EdgeInsets.all(18),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _InfoLine(
-                              value: controller.bio,
-                              label: 'О себе',
+                            const Text(
+                              'О себе',
+                              style: TextStyle(fontWeight: FontWeight.w900),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              controller.bio,
+                              style: const TextStyle(height: 1.45),
                             ),
                             const SizedBox(height: 16),
-                            _InfoLine(
-                              value: '@$handle',
-                              label: 'Имя пользователя',
-                            ),
-                            const SizedBox(height: 16),
-                            _InfoLine(
-                              value: joined == null
-                                  ? 'сегодня'
-                                  : '${joined.day.toString().padLeft(2, '0')}.${joined.month.toString().padLeft(2, '0')}.${joined.year}',
-                              label: 'В OneSpase с',
+                            Text(
+                              joined == null
+                                  ? 'OneSpase beta'
+                                  : 'В OneSpase с ${joined.day.toString().padLeft(2, '0')}.${joined.month.toString().padLeft(2, '0')}.${joined.year}',
+                              style: const TextStyle(
+                                color: OneSpaseTheme.textSecondary,
+                                fontSize: 12,
+                              ),
                             ),
                           ],
                         ),
                       ),
                     ),
-                    const SizedBox(height: 18),
-                    const Row(
+                    const SizedBox(height: 14),
+                    Row(
                       children: [
                         Expanded(
-                          child: _ProfileStat(value: '12', label: 'Постов'),
+                          child: _ProfileStat(
+                            value: '${controller.posts.length}',
+                            label: 'публикаций',
+                          ),
                         ),
-                        SizedBox(width: 10),
-                        Expanded(
-                          child: _ProfileStat(value: '4', label: 'Друзей'),
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: _ProfileStat(value: '0', label: 'подписчиков'),
                         ),
-                        SizedBox(width: 10),
-                        Expanded(
-                          child: _ProfileStat(value: '7', label: 'Подписок'),
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: _ProfileStat(value: '0', label: 'подписок'),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 22),
-                    const Text(
-                      'Публикации',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    ...controller.posts
-                        .where((post) => post.author == name)
-                        .map(
-                          (post) => Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: Card(
-                              child: Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Text(
-                                  post.text,
-                                  style: const TextStyle(
-                                    fontSize: 15,
-                                    height: 1.4,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
                   ],
                 ),
               ),
@@ -226,21 +208,20 @@ class ProfileScreen extends StatelessWidget {
   }
 
   Future<void> _editProfile(BuildContext context) async {
-    final bio = TextEditingController(text: controller.bio);
     final status = TextEditingController(text: controller.status);
+    final bio = TextEditingController(text: controller.bio);
 
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: OneSpaseTheme.surface,
       showDragHandle: true,
-      builder: (context) {
+      builder: (sheetContext) {
         return Padding(
           padding: EdgeInsets.fromLTRB(
             18,
-            6,
+            8,
             18,
-            MediaQuery.of(context).viewInsets.bottom + 24,
+            MediaQuery.of(sheetContext).viewInsets.bottom + 24,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -271,7 +252,7 @@ class ProfileScreen extends StatelessWidget {
                 onPressed: () async {
                   await controller.updateStatus(status.text);
                   await controller.updateBio(bio.text);
-                  if (context.mounted) Navigator.pop(context);
+                  if (sheetContext.mounted) Navigator.pop(sheetContext);
                 },
                 child: const Text('Сохранить'),
               ),
@@ -283,12 +264,6 @@ class ProfileScreen extends StatelessWidget {
 
     bio.dispose();
     status.dispose();
-  }
-
-  void _planned(BuildContext context, String feature) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$feature появятся позже.')),
-    );
   }
 }
 
@@ -322,30 +297,6 @@ class _ProfileButton extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _InfoLine extends StatelessWidget {
-  const _InfoLine({required this.value, required this.label});
-  final String value;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(value, style: const TextStyle(fontSize: 17)),
-        const SizedBox(height: 3),
-        Text(
-          label,
-          style: const TextStyle(
-            color: OneSpaseTheme.textSecondary,
-            fontSize: 13,
-          ),
-        ),
-      ],
     );
   }
 }

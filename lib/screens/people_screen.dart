@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../app_controller.dart';
 import '../models/social_profile.dart';
 import '../theme/onespase_theme.dart';
+import '../widgets/verification_badge.dart';
+import 'chat_screen.dart';
 
 class PeopleScreen extends StatefulWidget {
   const PeopleScreen({super.key, required this.controller});
@@ -20,7 +22,7 @@ class _PeopleScreenState extends State<PeopleScreen> {
   @override
   void initState() {
     super.initState();
-    _load('');
+    _runSearch('');
   }
 
   @override
@@ -29,7 +31,7 @@ class _PeopleScreenState extends State<PeopleScreen> {
     super.dispose();
   }
 
-  Future<void> _load(String query) async {
+  Future<void> _runSearch(String query) async {
     setState(() => _busy = true);
     final result = await widget.controller.searchPeople(query);
     if (!mounted) return;
@@ -45,18 +47,14 @@ class _PeopleScreenState extends State<PeopleScreen> {
       slivers: [
         const SliverAppBar(
           floating: true,
-          title: Text(
-            'Люди',
-            style: TextStyle(fontWeight: FontWeight.w900),
-          ),
+          title: Text('Люди', style: TextStyle(fontWeight: FontWeight.w900)),
         ),
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(14, 6, 14, 8),
+          padding: const EdgeInsets.fromLTRB(14, 6, 14, 10),
           sliver: SliverToBoxAdapter(
             child: TextField(
               controller: _search,
-              autocorrect: false,
-              onChanged: _load,
+              onChanged: _runSearch,
               decoration: const InputDecoration(
                 hintText: 'Имя или @username',
                 prefixIcon: Icon(Icons.search_rounded),
@@ -64,44 +62,40 @@ class _PeopleScreenState extends State<PeopleScreen> {
             ),
           ),
         ),
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(18, 6, 18, 6),
-          sliver: SliverToBoxAdapter(
-            child: Row(
-              children: [
-                Text(
-                  widget.controller.onlineConfigured
-                      ? 'Поиск OneSpase'
-                      : 'Демо-пользователи',
-                  style: const TextStyle(
-                    color: OneSpaseTheme.accent,
-                    fontWeight: FontWeight.w800,
-                  ),
+        if (_busy)
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          )
+        else if (_results.isEmpty)
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.all(28),
+              child: Center(
+                child: Text(
+                  'Никого не нашли',
+                  style: TextStyle(color: OneSpaseTheme.textSecondary),
                 ),
-                const Spacer(),
-                if (_busy)
-                  const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-              ],
+              ),
+            ),
+          )
+        else
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 110),
+            sliver: SliverList.separated(
+              itemCount: _results.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 5),
+              itemBuilder: (context, index) {
+                final profile = _results[index];
+                return _PersonTile(
+                  profile: profile,
+                  onTap: () => _showProfile(profile),
+                );
+              },
             ),
           ),
-        ),
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(14, 0, 14, 110),
-          sliver: SliverList.builder(
-            itemCount: _results.length,
-            itemBuilder: (context, index) {
-              final profile = _results[index];
-              return _PersonTile(
-                profile: profile,
-                onTap: () => _showProfile(profile),
-              );
-            },
-          ),
-        ),
       ],
     );
   }
@@ -109,74 +103,97 @@ class _PeopleScreenState extends State<PeopleScreen> {
   Future<void> _showProfile(SocialProfile profile) async {
     await showModalBottomSheet<void>(
       context: context,
-      backgroundColor: OneSpaseTheme.surface,
       showDragHandle: true,
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircleAvatar(
-                radius: 42,
-                backgroundColor: OneSpaseTheme.accentSoft,
-                child: Text(
-                  profile.displayName[0].toUpperCase(),
-                  style: const TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w900,
-                    color: OneSpaseTheme.accent,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(22, 10, 22, 28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircleAvatar(
+                  radius: 42,
+                  backgroundColor: OneSpaseTheme.accentSoft,
+                  child: Text(
+                    profile.displayName[0].toUpperCase(),
+                    style: const TextStyle(
+                      fontSize: 30,
+                      fontWeight: FontWeight.w900,
+                      color: OneSpaseTheme.accent,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 14),
-              Text(
-                profile.displayName,
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
-              ),
-              Text(
-                '@${profile.username}',
-                style: const TextStyle(color: OneSpaseTheme.textSecondary),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                profile.status,
-                style: TextStyle(
-                  color: profile.online
-                      ? OneSpaseTheme.accent
-                      : OneSpaseTheme.textSecondary,
+                const SizedBox(height: 14),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        profile.displayName,
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 5),
+                    VerificationBadge(type: profile.verification, size: 21),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 18),
-              Row(
-                children: [
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(this.context).showSnackBar(
+                Text(
+                  '@${profile.username}',
+                  style: const TextStyle(color: OneSpaseTheme.textSecondary),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  profile.online ? 'в сети' : profile.status,
+                  style: TextStyle(
+                    color: profile.online
+                        ? OneSpaseTheme.accent
+                        : OneSpaseTheme.textSecondary,
+                  ),
+                ),
+                if (profile.bio.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text(profile.bio, textAlign: TextAlign.center),
+                ],
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () async {
+                      if (!widget.controller.isOnlineAccount) {
+                        Navigator.pop(sheetContext);
+                        ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text(
-                              'Настоящий старт диалога подключим к таблице conversations.',
-                            ),
+                            content: Text('В демо-режиме это только макет.'),
                           ),
                         );
-                      },
-                      icon: const Icon(Icons.chat_bubble_rounded),
-                      label: const Text('Написать'),
-                    ),
+                        return;
+                      }
+                      final id = await widget.controller.startDirectChat(profile);
+                      if (!mounted || id == null) return;
+                      Navigator.pop(sheetContext);
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => ChatScreen(
+                            controller: widget.controller,
+                            chatId: id,
+                            title: profile.displayName,
+                            remote: true,
+                            verification: profile.verification,
+                            online: profile.online,
+                          ),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.chat_bubble_rounded),
+                    label: const Text('Написать'),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () {},
-                      icon: const Icon(Icons.person_add_alt_1_rounded),
-                      label: const Text('Добавить'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -186,7 +203,6 @@ class _PeopleScreenState extends State<PeopleScreen> {
 
 class _PersonTile extends StatelessWidget {
   const _PersonTile({required this.profile, required this.onTap});
-
   final SocialProfile profile;
   final VoidCallback onTap;
 
@@ -224,12 +240,23 @@ class _PersonTile extends StatelessWidget {
             ),
         ],
       ),
-      title: Text(
-        profile.displayName,
-        style: const TextStyle(fontWeight: FontWeight.w800),
+      title: Row(
+        children: [
+          Flexible(
+            child: Text(
+              profile.displayName,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ),
+          const SizedBox(width: 4),
+          VerificationBadge(type: profile.verification, size: 17),
+        ],
       ),
       subtitle: Text(
         profile.online ? 'в сети' : profile.status,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: TextStyle(
           color: profile.online
               ? OneSpaseTheme.accent

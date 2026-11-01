@@ -1,8 +1,8 @@
 name: onespase
-description: OneSpase — cozy social network + messenger prototype.
+description: OneSpase — cozy social network + real-time messenger.
 publish_to: "none"
 
-version: 0.4.0+5
+version: 0.5.0+6
 
 environment:
   sdk: ">=3.9.0 <4.0.0"

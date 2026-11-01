@@ -1,36 +1,42 @@
 # OneSpase Roadmap
 
-## v0.4 — Online Foundation
-- [x] новый визуальный стиль;
-- [x] 5-раздельная навигация;
-- [x] email OTP UI;
-- [x] Supabase auth integration;
-- [x] создание профиля;
+## v0.5 — Real Messenger Foundation
+- [x] новая фирменная иконка;
+- [x] гостевой онлайн-вход;
+- [x] Google OAuth entry point;
+- [x] профили и уникальные @username;
 - [x] поиск пользователей;
-- [x] SQL schema + RLS foundation;
-- [x] GitHub Actions build with Supabase Secrets;
-- [ ] серверный список диалогов;
-- [ ] realtime messages UI integration.
-
-## v0.5 — Real Messenger
-- [ ] direct conversations;
-- [ ] realtime messages;
-- [ ] unread counters;
+- [x] личные диалоги;
+- [x] Realtime-сообщения;
+- [x] редактирование и удаление своих сообщений;
+- [x] read receipts;
+- [x] online/offline presence;
+- [x] blue/red/purple verification badges;
+- [x] защищённая Owner Panel;
+- [x] журнал выдачи галочек;
 - [ ] typing indicator;
-- [ ] read receipts;
-- [ ] image attachments;
-- [ ] friends / follows.
+- [ ] реакции на сообщения;
+- [ ] вложения и фото;
+- [ ] push-уведомления.
 
 ## v0.6 — Social Network Online
-- [ ] server feed;
-- [ ] post photos;
-- [ ] server likes/comments;
-- [ ] profile posts;
-- [ ] notifications.
+- [ ] серверная лента;
+- [ ] фото в постах;
+- [ ] серверные лайки и комментарии;
+- [ ] подписки / друзья;
+- [ ] публикации профиля;
+- [ ] уведомления.
 
-## v0.7 — Calls
-- [ ] voice messages;
+## v0.7 — Media & Communities
+- [ ] голосовые сообщения;
+- [ ] кружки;
+- [ ] группы;
+- [ ] каналы;
+- [ ] истории;
+- [ ] музыка в профиле.
+
+## v0.8 — Calls
 - [ ] WebRTC signaling;
-- [ ] voice calls;
-- [ ] video calls;
-- [ ] group calls later.
+- [ ] голосовые звонки;
+- [ ] видеозвонки;
+- [ ] групповые звонки позже.

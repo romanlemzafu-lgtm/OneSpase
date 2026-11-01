@@ -7,6 +7,7 @@ class SocialProfile {
     this.bio = '',
     this.avatarUrl,
     this.online = false,
+    this.verification = 'none',
   });
 
   final String id;
@@ -16,16 +17,26 @@ class SocialProfile {
   final String bio;
   final String? avatarUrl;
   final bool online;
+  final String verification;
+
+  bool get isVerified => verification != 'none';
 
   factory SocialProfile.fromJson(Map<String, dynamic> json) {
     return SocialProfile(
       id: json['id']?.toString() ?? '',
-      displayName: json['display_name']?.toString() ?? 'Пользователь',
-      username: json['username']?.toString() ?? 'user',
-      status: json['status']?.toString() ?? 'В OneSpase',
+      displayName: json['display_name']?.toString() ??
+          json['peer_name']?.toString() ??
+          'Пользователь',
+      username: json['username']?.toString() ??
+          json['peer_username']?.toString() ??
+          'user',
+      status: json['status']?.toString() ??
+          json['peer_status']?.toString() ??
+          'В OneSpase',
       bio: json['bio']?.toString() ?? '',
       avatarUrl: json['avatar_url']?.toString(),
-      online: json['online'] == true,
+      online: json['online'] == true || json['peer_online'] == true,
+      verification: json['verification']?.toString() ?? 'none',
     );
   }
 }
