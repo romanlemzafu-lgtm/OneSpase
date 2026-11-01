@@ -1,16 +1,17 @@
 name: onespase
-description: OneSpase — messenger + social network prototype.
+description: OneSpase — cozy social network + messenger prototype.
 publish_to: "none"
 
-version: 0.3.1+4
+version: 0.4.0+5
 
 environment:
-  sdk: ">=3.5.0 <4.0.0"
+  sdk: ">=3.9.0 <4.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
   shared_preferences: ^2.5.5
+  supabase_flutter: ^2.18.3
 
 dev_dependencies:
   flutter_test:

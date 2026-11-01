@@ -1,57 +1,36 @@
 # OneSpase Roadmap
 
-## v0.3 — локальный прототип + Android CI
-- [x] бренд OneSpase;
-- [x] профиль: имя, @username, статус, дата регистрации;
-- [x] лента и посты;
-- [x] лайки;
-- [x] локальные комментарии;
-- [x] локальные чаты;
-- [x] локальное сохранение;
-- [x] GitHub Actions APK build;
-- [x] GitHub Releases APK workflow.
+## v0.4 — Online Foundation
+- [x] новый визуальный стиль;
+- [x] 5-раздельная навигация;
+- [x] email OTP UI;
+- [x] Supabase auth integration;
+- [x] создание профиля;
+- [x] поиск пользователей;
+- [x] SQL schema + RLS foundation;
+- [x] GitHub Actions build with Supabase Secrets;
+- [ ] серверный список диалогов;
+- [ ] realtime messages UI integration.
 
-## v0.4 — настоящие аккаунты
-- [ ] Supabase project;
-- [ ] регистрация и вход;
-- [ ] уникальные @username;
-- [ ] profiles table;
-- [ ] session persistence;
-- [ ] avatar storage;
-- [ ] Row Level Security.
-
-## v0.5 — настоящий мессенджер
-- [ ] conversations;
-- [ ] members;
+## v0.5 — Real Messenger
+- [ ] direct conversations;
 - [ ] realtime messages;
-- [ ] unread counter;
-- [ ] typing state;
+- [ ] unread counters;
+- [ ] typing indicator;
 - [ ] read receipts;
-- [ ] media messages;
-- [ ] voice messages.
+- [ ] image attachments;
+- [ ] friends / follows.
 
-## v0.6 — социальная сеть
-- [ ] server posts;
-- [ ] photos;
-- [ ] comments;
-- [ ] likes/reactions;
-- [ ] friends/followers;
-- [ ] feed;
+## v0.6 — Social Network Online
+- [ ] server feed;
+- [ ] post photos;
+- [ ] server likes/comments;
+- [ ] profile posts;
 - [ ] notifications.
 
-## v0.7 — звонки
+## v0.7 — Calls
+- [ ] voice messages;
 - [ ] WebRTC signaling;
-- [ ] STUN/TURN;
 - [ ] voice calls;
 - [ ] video calls;
 - [ ] group calls later.
-
-## Перед публичным релизом
-- [ ] блокировки;
-- [ ] жалобы;
-- [ ] приватность;
-- [ ] rate limiting;
-- [ ] backup strategy;
-- [ ] moderation;
-- [ ] anti-spam;
-- [ ] security review.

@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../app_controller.dart';
+import '../theme/onespase_theme.dart';
+import 'settings_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key, required this.controller});
-
   final AppController controller;
 
   @override
@@ -18,94 +19,204 @@ class ProfileScreen extends StatelessWidget {
 
         return CustomScrollView(
           slivers: [
-            const SliverAppBar(
-              pinned: true,
-              title: Text('Профиль', style: TextStyle(fontWeight: FontWeight.w800)),
+            SliverAppBar(
+              floating: true,
+              title: const Text(
+                'Профиль',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
+              actions: [
+                IconButton(
+                  tooltip: 'Настройки',
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => SettingsScreen(controller: controller),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.settings_outlined),
+                ),
+                const SizedBox(width: 4),
+              ],
             ),
             SliverPadding(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.fromLTRB(14, 8, 14, 110),
               sliver: SliverList(
-                delegate: SliverChildListDelegate([
-                  CircleAvatar(
-                    radius: 48,
-                    backgroundImage: const AssetImage('assets/images/onespase_icon.png'),
-                    child: Text(name.isEmpty ? '?' : name[0].toUpperCase()),
-                  ),
-                  const SizedBox(height: 16),
-                  Center(
-                    child: Text(
-                      name,
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Center(child: Text('@$handle', style: const TextStyle(color: Colors.white54))),
-                  const SizedBox(height: 12),
-                  Center(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1B1D22),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(controller.status),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Center(
-                    child: Text(
-                      controller.bio,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white70, height: 1.4),
-                    ),
-                  ),
-                  if (joined != null) ...[
-                    const SizedBox(height: 8),
+                delegate: SliverChildListDelegate(
+                  [
                     Center(
-                      child: Text(
-                        'В OneSpase с ${joined.day.toString().padLeft(2, '0')}.${joined.month.toString().padLeft(2, '0')}.${joined.year}',
-                        style: const TextStyle(color: Colors.white38, fontSize: 12),
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 22),
-                  FilledButton.tonalIcon(
-                    onPressed: () => _editBio(context),
-                    icon: const Icon(Icons.edit_rounded),
-                    label: const Text('Изменить описание'),
-                  ),
-                  const SizedBox(height: 10),
-                  FilledButton.tonalIcon(
-                    onPressed: () => _editStatus(context),
-                    icon: const Icon(Icons.bolt_rounded),
-                    label: const Text('Изменить статус'),
-                  ),
-                  const SizedBox(height: 10),
-                  OutlinedButton.icon(
-                    onPressed: controller.logout,
-                    icon: const Icon(Icons.logout_rounded),
-                    label: const Text('Выйти из демо-профиля'),
-                  ),
-                  const SizedBox(height: 28),
-                  const Card(
-                    child: Padding(
-                      padding: EdgeInsets.all(16),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      child: Stack(
                         children: [
-                          Icon(Icons.cloud_outlined),
-                          SizedBox(width: 12),
-                          Expanded(
+                          CircleAvatar(
+                            radius: 58,
+                            backgroundColor: OneSpaseTheme.accentSoft,
                             child: Text(
-                              'Сейчас данные сохраняются локально. Следующий этап — настоящие аккаунты и синхронизация между устройствами.',
-                              style: TextStyle(height: 1.4),
+                              name.isEmpty ? '?' : name[0].toUpperCase(),
+                              style: const TextStyle(
+                                fontSize: 40,
+                                fontWeight: FontWeight.w900,
+                                color: OneSpaseTheme.accent,
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            right: 2,
+                            bottom: 3,
+                            child: Container(
+                              width: 18,
+                              height: 18,
+                              decoration: BoxDecoration(
+                                color: OneSpaseTheme.success,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: OneSpaseTheme.background,
+                                  width: 3,
+                                ),
+                              ),
                             ),
                           ),
                         ],
                       ),
                     ),
-                  ),
-                ]),
+                    const SizedBox(height: 16),
+                    Center(
+                      child: Text(
+                        name,
+                        style: const TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Center(
+                      child: Text(
+                        '@$handle',
+                        style: const TextStyle(
+                          color: OneSpaseTheme.textSecondary,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Center(
+                      child: Text(
+                        controller.status,
+                        style: const TextStyle(
+                          color: OneSpaseTheme.accent,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _ProfileButton(
+                            icon: Icons.photo_camera_outlined,
+                            label: 'Фото',
+                            onTap: () => _planned(context, 'Аватарки'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _ProfileButton(
+                            icon: Icons.edit_rounded,
+                            label: 'Изменить',
+                            onTap: () => _editProfile(context),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _ProfileButton(
+                            icon: Icons.settings_rounded,
+                            label: 'Настройки',
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      SettingsScreen(controller: controller),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(18),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _InfoLine(
+                              value: controller.bio,
+                              label: 'О себе',
+                            ),
+                            const SizedBox(height: 16),
+                            _InfoLine(
+                              value: '@$handle',
+                              label: 'Имя пользователя',
+                            ),
+                            const SizedBox(height: 16),
+                            _InfoLine(
+                              value: joined == null
+                                  ? 'сегодня'
+                                  : '${joined.day.toString().padLeft(2, '0')}.${joined.month.toString().padLeft(2, '0')}.${joined.year}',
+                              label: 'В OneSpase с',
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    const Row(
+                      children: [
+                        Expanded(
+                          child: _ProfileStat(value: '12', label: 'Постов'),
+                        ),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: _ProfileStat(value: '4', label: 'Друзей'),
+                        ),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: _ProfileStat(value: '7', label: 'Подписок'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 22),
+                    const Text(
+                      'Публикации',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    ...controller.posts
+                        .where((post) => post.author == name)
+                        .map(
+                          (post) => Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: Card(
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Text(
+                                  post.text,
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -114,42 +225,159 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Future<void> _editBio(BuildContext context) async {
-    final textController = TextEditingController(text: controller.bio);
-    final result = await showDialog<String>(
+  Future<void> _editProfile(BuildContext context) async {
+    final bio = TextEditingController(text: controller.bio);
+    final status = TextEditingController(text: controller.status);
+
+    await showModalBottomSheet<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Описание профиля'),
-        content: TextField(controller: textController, minLines: 2, maxLines: 5, autofocus: true),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена')),
-          FilledButton(onPressed: () => Navigator.pop(context, textController.text), child: const Text('Сохранить')),
-        ],
-      ),
+      isScrollControlled: true,
+      backgroundColor: OneSpaseTheme.surface,
+      showDragHandle: true,
+      builder: (context) {
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            18,
+            6,
+            18,
+            MediaQuery.of(context).viewInsets.bottom + 24,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Редактировать профиль',
+                style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: status,
+                maxLength: 50,
+                decoration: const InputDecoration(
+                  labelText: 'Статус',
+                  counterText: '',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: bio,
+                minLines: 2,
+                maxLines: 5,
+                decoration: const InputDecoration(labelText: 'О себе'),
+              ),
+              const SizedBox(height: 14),
+              FilledButton(
+                onPressed: () async {
+                  await controller.updateStatus(status.text);
+                  await controller.updateBio(bio.text);
+                  if (context.mounted) Navigator.pop(context);
+                },
+                child: const Text('Сохранить'),
+              ),
+            ],
+          ),
+        );
+      },
     );
-    textController.dispose();
-    if (result != null) await controller.updateBio(result);
+
+    bio.dispose();
+    status.dispose();
   }
 
-  Future<void> _editStatus(BuildContext context) async {
-    final textController = TextEditingController(text: controller.status);
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Статус'),
-        content: TextField(
-          controller: textController,
-          maxLength: 40,
-          autofocus: true,
-          decoration: const InputDecoration(hintText: 'Например: Играю 🎮'),
+  void _planned(BuildContext context, String feature) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$feature появятся позже.')),
+    );
+  }
+}
+
+class _ProfileButton extends StatelessWidget {
+  const _ProfileButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 15),
+        decoration: BoxDecoration(
+          color: OneSpaseTheme.surface,
+          borderRadius: BorderRadius.circular(20),
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена')),
-          FilledButton(onPressed: () => Navigator.pop(context, textController.text), child: const Text('Сохранить')),
+        child: Column(
+          children: [
+            Icon(icon, size: 25),
+            const SizedBox(height: 7),
+            Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoLine extends StatelessWidget {
+  const _InfoLine({required this.value, required this.label});
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(value, style: const TextStyle(fontSize: 17)),
+        const SizedBox(height: 3),
+        Text(
+          label,
+          style: const TextStyle(
+            color: OneSpaseTheme.textSecondary,
+            fontSize: 13,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ProfileStat extends StatelessWidget {
+  const _ProfileStat({required this.value, required this.label});
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      decoration: BoxDecoration(
+        color: OneSpaseTheme.surface,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        children: [
+          Text(
+            value,
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+          ),
+          Text(
+            label,
+            style: const TextStyle(
+              color: OneSpaseTheme.textSecondary,
+              fontSize: 12,
+            ),
+          ),
         ],
       ),
     );
-    textController.dispose();
-    if (result != null) await controller.updateStatus(result);
   }
 }

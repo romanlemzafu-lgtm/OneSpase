@@ -1,13 +1,31 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app_controller.dart';
-import 'screens/auth_screen.dart';
+import 'screens/auth/auth_flow_screen.dart';
 import 'screens/home_shell.dart';
+import 'services/supabase_service.dart';
+import 'theme/onespase_theme.dart';
+
+const _supabaseUrl = String.fromEnvironment('SUPABASE_URL');
+const _supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final controller = AppController();
+  final onlineConfigured =
+      _supabaseUrl.trim().isNotEmpty && _supabaseAnonKey.trim().isNotEmpty;
+
+  if (onlineConfigured) {
+    await Supabase.initialize(
+      url: _supabaseUrl,
+      anonKey: _supabaseAnonKey,
+    );
+  }
+
+  final controller = AppController(
+    supabase: SupabaseService(enabled: onlineConfigured),
+  );
   await controller.load();
 
   runApp(OneSpaseApp(controller: controller));
@@ -26,43 +44,10 @@ class OneSpaseApp extends StatelessWidget {
         return MaterialApp(
           debugShowCheckedModeBanner: false,
           title: 'OneSpase',
-          theme: ThemeData(
-            brightness: Brightness.dark,
-            useMaterial3: true,
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.white,
-              brightness: Brightness.dark,
-            ).copyWith(
-              primary: Colors.white,
-              onPrimary: Colors.black,
-              secondary: const Color(0xFFBFC3C8),
-              surface: const Color(0xFF17191E),
-            ),
-            scaffoldBackgroundColor: const Color(0xFF0B0C0F),
-            cardTheme: const CardThemeData(
-              elevation: 0,
-              margin: EdgeInsets.zero,
-            ),
-            inputDecorationTheme: InputDecorationTheme(
-              filled: true,
-              fillColor: const Color(0xFF17191E),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(18),
-                borderSide: BorderSide.none,
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(18),
-                borderSide: BorderSide.none,
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(18),
-                borderSide: const BorderSide(color: Colors.white54),
-              ),
-            ),
-          ),
-          home: controller.userName == null
-              ? AuthScreen(controller: controller)
-              : HomeShell(controller: controller),
+          theme: OneSpaseTheme.dark(),
+          home: controller.isSignedIn
+              ? HomeShell(controller: controller)
+              : AuthFlowScreen(controller: controller),
         );
       },
     );
