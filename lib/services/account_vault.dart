@@ -12,13 +12,20 @@ class AccountVault {
 
   Future<List<AccountSlot>> loadSlots() async {
     final raw = await _storage.read(key: _slotsKey);
-    if (raw == null || raw.isEmpty) return const [];
+
+    if (raw == null || raw.isEmpty) {
+      return const [];
+    }
+
     try {
       final decoded = jsonDecode(raw) as List<dynamic>;
+
       return decoded
-          .map((item) => AccountSlot.fromJson(
-                Map<String, dynamic>.from(item as Map),
-              ))
+          .map(
+            (item) => AccountSlot.fromJson(
+              Map<String, dynamic>.from(item as Map),
+            ),
+          )
           .where((slot) => slot.userId.isNotEmpty)
           .toList(growable: false);
     } catch (_) {
@@ -28,31 +35,54 @@ class AccountVault {
 
   Future<void> saveAccount({
     required AccountSlot slot,
-    required String refreshToken,
+    required String? refreshToken,
   }) async {
+    if (refreshToken == null || refreshToken.isEmpty) {
+      return;
+    }
+
     final existing = [...await loadSlots()];
-    existing.removeWhere((item) => item.userId == slot.userId);
+
+    existing.removeWhere(
+      (item) => item.userId == slot.userId,
+    );
+
     existing.insert(0, slot);
+
     await _storage.write(
       key: _slotsKey,
-      value: jsonEncode(existing.map((e) => e.toJson()).toList()),
+      value: jsonEncode(
+        existing.map((e) => e.toJson()).toList(),
+      ),
     );
+
     await _storage.write(
       key: '$_tokenPrefix${slot.userId}',
       value: refreshToken,
     );
   }
 
-  Future<String?> refreshTokenFor(String userId) =>
-      _storage.read(key: '$_tokenPrefix$userId');
+  Future<String?> refreshTokenFor(String userId) {
+    return _storage.read(
+      key: '$_tokenPrefix$userId',
+    );
+  }
 
   Future<void> removeAccount(String userId) async {
     final existing = [...await loadSlots()]
-      ..removeWhere((item) => item.userId == userId);
+      ..removeWhere(
+        (item) => item.userId == userId,
+      );
+
     await _storage.write(
       key: _slotsKey,
-      value: jsonEncode(existing.map((e) => e.toJson()).toList()),
+      value: jsonEncode(
+        existing.map((e) => e.toJson()).toList(),
+      ),
     );
-    await _storage.delete(key: '$_tokenPrefix$userId');
+
+    await _storage.delete(
+      key: '$_tokenPrefix$userId',
+    );
   }
 }
