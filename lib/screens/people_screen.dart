@@ -159,38 +159,49 @@ class _PeopleScreenState extends State<PeopleScreen> {
                   Text(profile.bio, textAlign: TextAlign.center),
                 ],
                 const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: () async {
-                      if (!widget.controller.isOnlineAccount) {
-                        Navigator.pop(sheetContext);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('В демо-режиме это только макет.'),
-                          ),
-                        );
-                        return;
-                      }
-                      final id = await widget.controller.startDirectChat(profile);
-                      if (!mounted || id == null) return;
-                      Navigator.pop(sheetContext);
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => ChatScreen(
-                            controller: widget.controller,
-                            chatId: id,
-                            title: profile.displayName,
-                            remote: true,
-                            verification: profile.verification,
-                            online: profile.online,
-                          ),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.chat_bubble_rounded),
-                    label: const Text('Написать'),
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: () async {
+                          if (!widget.controller.isOnlineAccount) {
+                            Navigator.pop(sheetContext);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('В демо-режиме это только макет.')),
+                            );
+                            return;
+                          }
+                          final id = await widget.controller.startDirectChat(profile);
+                          if (!mounted || id == null) return;
+                          Navigator.pop(sheetContext);
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => ChatScreen(
+                                controller: widget.controller,
+                                chatId: id,
+                                title: profile.displayName,
+                                remote: true,
+                                verification: profile.verification,
+                                online: profile.online,
+                              ),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.chat_bubble_rounded),
+                        label: const Text('Написать'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: widget.controller.isOnlineAccount
+                            ? () => _pickGift(sheetContext, profile)
+                            : null,
+                        icon: const Icon(Icons.card_giftcard_rounded),
+                        label: const Text('Подарок'),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -199,6 +210,55 @@ class _PeopleScreenState extends State<PeopleScreen> {
       },
     );
   }
+  Future<void> _pickGift(BuildContext sheetContext, SocialProfile profile) async {
+    try {
+      final catalog = await widget.controller.loadGiftCatalog();
+      if (!mounted) return;
+      if (catalog.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Каталог подарков пока пуст.')),
+        );
+        return;
+      }
+      await showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (giftContext) => SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(14, 4, 14, 24),
+            children: [
+              Text('Подарок для @${profile.username}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+              const SizedBox(height: 10),
+              ...catalog.map((gift) => Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: ListTile(
+                      leading: Text(gift.emoji, style: const TextStyle(fontSize: 34)),
+                      title: Text(gift.title, style: const TextStyle(fontWeight: FontWeight.w800)),
+                      subtitle: Text(gift.rarity.toUpperCase()),
+                      onTap: () async {
+                        await widget.controller.sendGift(profile: profile, gift: gift);
+                        if (giftContext.mounted) Navigator.pop(giftContext);
+                        if (sheetContext.mounted) Navigator.pop(sheetContext);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('${gift.emoji} Подарок отправлен @${profile.username}')),
+                          );
+                        }
+                      },
+                    ),
+                  )),
+            ],
+          ),
+        ),
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
+      }
+    }
+  }
+
 }
 
 class _PersonTile extends StatelessWidget {

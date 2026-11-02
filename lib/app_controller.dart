@@ -2,20 +2,25 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import 'models/account_slot.dart';
 import 'models/chat_message.dart';
+import 'models/emoji_pack.dart';
+import 'models/gift_item.dart';
 import 'models/local_post.dart';
 import 'models/remote_chat.dart';
 import 'models/social_profile.dart';
+import 'services/account_vault.dart';
 import 'services/local_store.dart';
 import 'services/supabase_service.dart';
 
-enum AuthStep { choose, profile }
+enum AuthStep { choose, emailLogin, emailRegister, profile }
 
 class AppController extends ChangeNotifier {
   AppController({required this.supabase});
 
   final SupabaseService supabase;
   final LocalStore _store = LocalStore();
+  final AccountVault _vault = AccountVault();
   StreamSubscription<void>? _authSubscription;
 
   static const _userKey = 'onespase_user_name';
@@ -32,13 +37,22 @@ class AppController extends ChangeNotifier {
   String bio = 'Моё пространство в OneSpase 🚀';
   String status = 'В сети';
   String verification = 'none';
+  String profileTheme = 'purple';
+  String emojiStatus = '';
+  String musicTitle = '';
+  String featuredChannel = '';
   DateTime? joinedAt;
 
   String? authError;
   bool authBusy = false;
   bool demoSession = false;
   bool isOwner = false;
+  bool accountAuthMode = false;
   AuthStep authStep = AuthStep.choose;
+
+  List<AccountSlot> accountSlots = const [];
+  List<GiftItem> gifts = const [];
+  List<EmojiPack> emojiPacks = const [];
 
   List<RemoteConversation> remoteConversations = const [];
   bool conversationsBusy = false;
@@ -56,7 +70,7 @@ class AppController extends ChangeNotifier {
   String? get currentUserId => supabase.currentUserId;
   bool get isOnlineAccount =>
       supabase.enabled && supabase.currentSession != null && !demoSession;
-  bool get isSignedIn => demoSession || (isOnlineAccount && userName != null);
+  bool get isSignedIn => !accountAuthMode && (demoSession || (isOnlineAccount && userName != null));
 
   final List<SocialProfile> demoPeople = const [
     SocialProfile(
@@ -98,11 +112,16 @@ class AppController extends ChangeNotifier {
     demoSession = await _store.getString(_demoKey) == 'true';
 
     await _loadLocalContent();
+    accountSlots = await _vault.loadSlots();
 
     if (supabase.enabled) {
-      _authSubscription ??= supabase.authSessionChanges.listen((_) async {
-        await _handleOnlineSession();
-      });
+      _authSubscription ??= supabase.authSessionChanges.listen(
+        (_) async => _handleOnlineSession(),
+        onError: (Object error, StackTrace stackTrace) {
+          authError = _friendlyError(error);
+          notifyListeners();
+        },
+      );
       await _handleOnlineSession();
     }
 
@@ -135,8 +154,11 @@ class AppController extends ChangeNotifier {
         await _applyProfile(profile);
         await supabase.setPresence(true);
         await refreshConversations();
+        await refreshExtras();
+        await _saveCurrentAccountSlot();
       }
       isOwner = await supabase.isOwner();
+      accountAuthMode = false;
     } catch (error) {
       authError = _friendlyError(error);
     }
@@ -163,6 +185,131 @@ class AppController extends ChangeNotifier {
       authBusy = false;
       notifyListeners();
     }
+  }
+
+  void showEmailLogin() {
+    authError = null;
+    authStep = AuthStep.emailLogin;
+    notifyListeners();
+  }
+
+  void showEmailRegister() {
+    authError = null;
+    authStep = AuthStep.emailRegister;
+    notifyListeners();
+  }
+
+  void showAuthChoice() {
+    authError = null;
+    authStep = AuthStep.choose;
+    notifyListeners();
+  }
+
+  Future<void> registerWithEmail({
+    required String email,
+    required String password,
+  }) async {
+    if (!supabase.enabled) {
+      authError = 'Сначала подключи Supabase к APK.';
+      notifyListeners();
+      return;
+    }
+    if (!email.contains('@') || password.length < 8) {
+      authError = 'Нужна настоящая почта и пароль минимум из 8 символов.';
+      notifyListeners();
+      return;
+    }
+
+    authBusy = true;
+    authError = null;
+    notifyListeners();
+    try {
+      await supabase.signUpWithEmail(email: email, password: password);
+      if (supabase.currentSession == null) {
+        authError = 'Аккаунт создан. В Supabase включено подтверждение email — либо подтверди письмо, либо отключи Confirm email.';
+        authStep = AuthStep.emailLogin;
+      } else {
+        demoSession = false;
+        authStep = AuthStep.profile;
+      }
+    } catch (error) {
+      authError = _friendlyError(error);
+    } finally {
+      authBusy = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> loginWithEmail({
+    required String email,
+    required String password,
+  }) async {
+    if (!supabase.enabled) {
+      authError = 'Сначала подключи Supabase к APK.';
+      notifyListeners();
+      return;
+    }
+    authBusy = true;
+    authError = null;
+    notifyListeners();
+    try {
+      await supabase.signInWithEmail(email: email, password: password);
+      demoSession = false;
+      await _handleOnlineSession();
+    } catch (error) {
+      authError = _friendlyError(error);
+    } finally {
+      authBusy = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> prepareAddAccount() async {
+    await _saveCurrentAccountSlot();
+    accountAuthMode = true;
+    authStep = AuthStep.choose;
+    authError = null;
+    notifyListeners();
+  }
+
+  Future<void> cancelAddAccount() async {
+    accountAuthMode = false;
+    authError = null;
+    notifyListeners();
+  }
+
+  Future<void> switchAccount(String userId) async {
+    if (userId == currentUserId) {
+      accountAuthMode = false;
+      return;
+    }
+    authBusy = true;
+    authError = null;
+    notifyListeners();
+    try {
+      await _saveCurrentAccountSlot();
+      final token = await _vault.refreshTokenFor(userId);
+      if (token == null || token.isEmpty) {
+        throw StateError('Сессия этого аккаунта не сохранена. Войди в него заново.');
+      }
+      await supabase.restoreSession(token);
+      await _handleOnlineSession();
+    } catch (error) {
+      authError = _friendlyError(error);
+    } finally {
+      authBusy = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> removeSavedAccount(String userId) async {
+    if (userId == currentUserId) {
+      await logout();
+      return;
+    }
+    await _vault.removeAccount(userId);
+    accountSlots = await _vault.loadSlots();
+    notifyListeners();
   }
 
   Future<void> startGoogle() async {
@@ -213,6 +360,10 @@ class AppController extends ChangeNotifier {
           username: cleanedHandle,
           status: newStatus.trim().isEmpty ? 'В OneSpase' : newStatus.trim(),
           bio: bio,
+          profileTheme: profileTheme,
+          emojiStatus: emojiStatus,
+          musicTitle: musicTitle,
+          featuredChannel: featuredChannel,
         );
       }
 
@@ -227,6 +378,7 @@ class AppController extends ChangeNotifier {
         final profile = await supabase.loadMyProfile();
         if (profile != null) await _applyProfile(profile);
         isOwner = await supabase.isOwner();
+      accountAuthMode = false;
       }
     } catch (error) {
       authError = _friendlyError(error);
@@ -248,8 +400,12 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    final leavingUserId = currentUserId;
     await supabase.signOut();
+    if (leavingUserId != null) await _vault.removeAccount(leavingUserId);
+    accountSlots = await _vault.loadSlots();
     demoSession = false;
+    accountAuthMode = false;
     userName = null;
     userHandle = null;
     joinedAt = null;
@@ -276,6 +432,66 @@ class AppController extends ChangeNotifier {
     status = value.trim().isEmpty ? 'В сети' : value.trim();
     await _store.setString(_statusKey, status);
     await _syncProfileIfOnline();
+    notifyListeners();
+  }
+
+  Future<void> updateProfileCustomization({
+    required String theme,
+    required String newEmojiStatus,
+    required String newMusicTitle,
+    required String newFeaturedChannel,
+  }) async {
+    profileTheme = theme;
+    emojiStatus = newEmojiStatus.trim();
+    musicTitle = newMusicTitle.trim();
+    featuredChannel = newFeaturedChannel.trim();
+    await _syncProfileIfOnline();
+    notifyListeners();
+  }
+
+  Future<void> refreshExtras() async {
+    if (!isOnlineAccount) return;
+    try {
+      gifts = await supabase.myGifts();
+    } catch (_) {
+      gifts = const [];
+    }
+    try {
+      emojiPacks = await supabase.myEmojiPacks();
+    } catch (_) {
+      emojiPacks = const [];
+    }
+    notifyListeners();
+  }
+
+  Future<List<GiftItem>> loadGiftCatalog() async {
+    if (!isOnlineAccount) return const [];
+    return supabase.giftCatalog();
+  }
+
+  Future<void> sendGift({
+    required SocialProfile profile,
+    required GiftItem gift,
+    String? note,
+  }) async {
+    await supabase.sendGift(
+      targetUserId: profile.id,
+      giftSlug: gift.slug,
+      note: note,
+    );
+  }
+
+  Future<void> createEmojiPack({
+    required String title,
+    required String slug,
+    required List<String> emojis,
+  }) async {
+    await supabase.createEmojiPack(
+      title: title,
+      slug: slug,
+      emojis: emojis,
+    );
+    emojiPacks = await supabase.myEmojiPacks();
     notifyListeners();
   }
 
@@ -381,6 +597,19 @@ class AppController extends ChangeNotifier {
     return supabase.badgeAudit();
   }
 
+  Future<void> reserveUsername({
+    required String username,
+    SocialProfile? forProfile,
+    String? reason,
+  }) async {
+    if (!isOwner) throw StateError('Доступ только владельцу OneSpase.');
+    await supabase.reserveUsername(
+      username: username.trim().replaceAll('@', '').toLowerCase(),
+      targetUserId: forProfile?.id,
+      reason: reason,
+    );
+  }
+
   Future<void> addPost(String text) async {
     final cleaned = text.trim();
     if (cleaned.isEmpty || userName == null) return;
@@ -445,6 +674,10 @@ class AppController extends ChangeNotifier {
     status = profile.status;
     bio = profile.bio.isEmpty ? bio : profile.bio;
     verification = profile.verification;
+    profileTheme = profile.profileTheme;
+    emojiStatus = profile.emojiStatus;
+    musicTitle = profile.musicTitle;
+    featuredChannel = profile.featuredChannel;
     joinedAt ??= DateTime.now();
     demoSession = false;
     await _store.remove(_demoKey);
@@ -505,6 +738,10 @@ class AppController extends ChangeNotifier {
         username: userHandle!,
         status: status,
         bio: bio,
+        profileTheme: profileTheme,
+        emojiStatus: emojiStatus,
+        musicTitle: musicTitle,
+        featuredChannel: featuredChannel,
       );
     } catch (_) {}
   }
@@ -528,6 +765,15 @@ class AppController extends ChangeNotifier {
     }
     if (low.contains('rate')) {
       return 'Слишком много попыток. Попробуй чуть позже.';
+    }
+    if (low.contains('reserved username') || low.contains('protected username')) {
+      return 'Этот @username зарезервирован. Для официальных названий нужно обратиться к владельцу OneSpase.';
+    }
+    if (low.contains('invalid login credentials')) {
+      return 'Неверная почта или пароль.';
+    }
+    if (low.contains('user already registered')) {
+      return 'Аккаунт с такой почтой уже существует.';
     }
     if (low.contains('duplicate') || low.contains('unique')) {
       return 'Такой @username уже занят.';
@@ -553,7 +799,7 @@ class AppController extends ChangeNotifier {
           id: 'welcome',
           author: 'OneSpase',
           text:
-              'Добро пожаловать в OneSpase 🚀 v0.5 превращает прототип в настоящий онлайн-мессенджер.',
+              'Добро пожаловать в OneSpase 🚀 v0.6 добавляет аккаунты, подарки, emoji-паки и оформление профиля.',
           createdAt: DateTime.now().subtract(const Duration(minutes: 18)),
           likes: 15,
           comments: ['Погнали!'],
@@ -580,7 +826,7 @@ class AppController extends ChangeNotifier {
         'dev': [
           ChatMessage(
             id: 'd1',
-            text: 'v0.5 уже тут 🚀',
+            text: 'v0.6 уже тут 🚀',
             sentAt: DateTime.now().subtract(const Duration(hours: 1)),
             fromMe: false,
           ),
@@ -594,6 +840,28 @@ class AppController extends ChangeNotifier {
           ),
         ],
       };
+
+  Future<void> _saveCurrentAccountSlot() async {
+    final session = supabase.currentSession;
+    final profileName = userName;
+    final profileHandle = userHandle;
+    if (!isOnlineAccount ||
+        session == null ||
+        profileName == null ||
+        profileHandle == null) {
+      return;
+    }
+    await _vault.saveAccount(
+      slot: AccountSlot(
+        userId: session.user.id,
+        label: profileName,
+        username: profileHandle,
+        email: session.user.email,
+      ),
+      refreshToken: session.refreshToken,
+    );
+    accountSlots = await _vault.loadSlots();
+  }
 
   @override
   void dispose() {

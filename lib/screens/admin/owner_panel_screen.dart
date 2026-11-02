@@ -111,6 +111,29 @@ class _OwnerPanelScreenState extends State<OwnerPanelScreen> {
             ..._results.map(_userCard),
           ],
           const SizedBox(height: 22),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text('Защищённые @username', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 6),
+                  const Text(
+                    '@onespase, @roma, @kotost и @mzdiff уже зарезервированы. Здесь можно закрепить защищённый username за конкретным аккаунтом.',
+                    style: TextStyle(color: OneSpaseTheme.textSecondary, height: 1.35),
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: _openReserveDialog,
+                    icon: const Icon(Icons.alternate_email_rounded),
+                    label: const Text('Зарезервировать / выдать username'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 22),
           Row(
             children: [
               const Expanded(
@@ -274,4 +297,94 @@ class _OwnerPanelScreenState extends State<OwnerPanelScreen> {
     }
     reason.dispose();
   }
+  Future<void> _openReserveDialog() async {
+    final username = TextEditingController();
+    final userSearch = TextEditingController();
+    final reason = TextEditingController();
+    SocialProfile? selected;
+    List<SocialProfile> candidates = const [];
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text('Защищённый username'),
+            content: SizedBox(
+              width: 420,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: username,
+                      decoration: const InputDecoration(labelText: '@username', prefixText: '@'),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: userSearch,
+                      decoration: const InputDecoration(labelText: 'Найти аккаунт-получатель (необязательно)'),
+                      onChanged: (value) async {
+                        if (value.trim().isEmpty) {
+                          setDialogState(() => candidates = const []);
+                          return;
+                        }
+                        final rows = await widget.controller.searchPeople(value, includeSelf: true);
+                        if (dialogContext.mounted) setDialogState(() => candidates = rows.take(5).toList());
+                      },
+                    ),
+                    if (candidates.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      ...candidates.map((profile) => RadioListTile<String>(
+                            value: profile.id,
+                            groupValue: selected?.id,
+                            title: Text('${profile.displayName}  @${profile.username}'),
+                            onChanged: (_) => setDialogState(() => selected = profile),
+                          )),
+                    ],
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: reason,
+                      maxLines: 2,
+                      decoration: const InputDecoration(labelText: 'Причина / заметка'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Отмена')),
+              FilledButton(
+                onPressed: () async {
+                  try {
+                    await widget.controller.reserveUsername(
+                      username: username.text,
+                      forProfile: selected,
+                      reason: reason.text.trim(),
+                    );
+                    if (dialogContext.mounted) Navigator.pop(dialogContext);
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(selected == null
+                            ? 'Username зарезервирован.'
+                            : 'Username закреплён за @${selected!.username}.')),
+                      );
+                    }
+                  } catch (error) {
+                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
+                  }
+                },
+                child: const Text('Сохранить'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    username.dispose();
+    userSearch.dispose();
+    reason.dispose();
+  }
+
 }

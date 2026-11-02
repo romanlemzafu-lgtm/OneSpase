@@ -8,6 +8,10 @@ class SocialProfile {
     this.avatarUrl,
     this.online = false,
     this.verification = 'none',
+    this.profileTheme = 'purple',
+    this.emojiStatus = '',
+    this.musicTitle = '',
+    this.featuredChannel = '',
   });
 
   final String id;
@@ -18,12 +22,16 @@ class SocialProfile {
   final String? avatarUrl;
   final bool online;
   final String verification;
+  final String profileTheme;
+  final String emojiStatus;
+  final String musicTitle;
+  final String featuredChannel;
 
   bool get isVerified => verification != 'none';
 
   factory SocialProfile.fromJson(Map<String, dynamic> json) {
     return SocialProfile(
-      id: json['id']?.toString() ?? '',
+      id: json['id']?.toString() ?? json['peer_id']?.toString() ?? '',
       displayName: json['display_name']?.toString() ??
           json['peer_name']?.toString() ??
           'Пользователь',
@@ -37,6 +45,10 @@ class SocialProfile {
       avatarUrl: json['avatar_url']?.toString(),
       online: json['online'] == true || json['peer_online'] == true,
       verification: json['verification']?.toString() ?? 'none',
+      profileTheme: json['profile_theme']?.toString() ?? 'purple',
+      emojiStatus: json['emoji_status']?.toString() ?? '',
+      musicTitle: json['music_title']?.toString() ?? '',
+      featuredChannel: json['featured_channel']?.toString() ?? '',
     );
   }
 }

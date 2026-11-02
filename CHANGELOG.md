@@ -1,27 +1,24 @@
-# OneSpase v0.5.0 — Messenger Foundation
+# OneSpase v0.6.0 — Identity + Customization
 
-## Added
+## Работает в этой сборке
+- регистрация email + пароль прямо в APK, без отдельного сайта;
+- вход email + пароль, Google OAuth и гостевой режим;
+- несколько аккаунтов на одном телефоне через защищённое хранилище;
+- переключение аккаунтов и добавление второго аккаунта;
+- зарезервированные @onespase, @roma, @kotost, @mzdiff;
+- защита названий крупных соцсетей/мессенджеров от самозахвата;
+- Owner-only серверная система резервирования usernames;
+- темы профиля: purple / blue / sunset / mint;
+- emoji-status возле имени;
+- музыка в профиле;
+- карточка канала/сообщества в профиле;
+- бесплатные beta-подарки с редкостью и серийными номерами;
+- коллекция подарков профиля;
+- Emoji Studio beta: свои Unicode emoji-паки;
+- предыдущие v0.5 функции: реальные личные чаты, Realtime, read receipts, галочки и Owner Panel.
 
-- New official OneSpase app icon.
-- Google OAuth button (requires Google provider setup in Supabase).
-- Anonymous/guest online sign-in.
-- Online profile creation with unique `@username`.
-- User search through Supabase.
-- Real direct conversations between two accounts.
-- Realtime messages with Supabase Realtime.
-- Edit and delete your own messages.
-- Basic delivered/read state.
-- Online/offline presence updates.
-- Three verification badge types:
-  - blue — verified account;
-  - red — official OneSpase account;
-  - purple — special OneSpase status / founder / creator.
-- Secure Owner Panel.
-- Badge audit log.
-- v0.5 Supabase migration.
-- Android OAuth deep link configuration in GitHub Actions.
-
-## Still local / planned
-
-- The social feed is still local in this build.
-- Push notifications, groups, channels, voice messages and calls are next stages.
+## Зафиксировано на следующие версии
+Stories, альбомы историй, полноценные custom emoji PNG/WebP, стикер-редактор,
+темы отдельных чатов, папки, Saved Messages, группы/темы, каналы,
+сообщества, сообщения каналу, welcome messages, опросы, rich text,
+голосовые/видео, live stories, business-профили, passkeys, AI и Space Profile.
