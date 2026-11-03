@@ -1,28 +1,26 @@
 name: onespase
-description: OneSpase — cozy social network + real-time messenger.
+description: OneSpase v0.7 offline/local prototype
 publish_to: "none"
-
-version: 0.6.0+7
+version: 0.7.1+9
 
 environment:
-  sdk: ">=3.9.0 <4.0.0"
+  sdk: ">=3.3.0 <4.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
-  shared_preferences: ^2.5.5
-  flutter_secure_storage: ^11.2.0
-  supabase_flutter: ^2.18.3
+  shared_preferences: ^2.5.3
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  flutter_lints: ^5.0.0
   flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true
   assets:
-    - assets/images/onespase_logo.png
+    - assets/images/secret_packet.png
     - assets/images/onespase_icon.png
 
 flutter_launcher_icons:

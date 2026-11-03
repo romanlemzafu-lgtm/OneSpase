@@ -1,871 +1,253 @@
-import 'dart:async';
-
 import 'package:flutter/foundation.dart';
-
-import 'models/account_slot.dart';
-import 'models/chat_message.dart';
-import 'models/emoji_pack.dart';
-import 'models/gift_item.dart';
-import 'models/local_post.dart';
-import 'models/remote_chat.dart';
-import 'models/social_profile.dart';
-import 'services/account_vault.dart';
-import 'services/local_store.dart';
-import 'services/supabase_service.dart';
-
-enum AuthStep { choose, emailLogin, emailRegister, profile }
+import 'models/models.dart';
+import 'services/local_repository.dart';
 
 class AppController extends ChangeNotifier {
-  AppController({required this.supabase});
+  AppController(this.repo);
+  final LocalRepository repo;
 
-  final SupabaseService supabase;
-  final LocalStore _store = LocalStore();
-  final AccountVault _vault = AccountVault();
-  StreamSubscription<void>? _authSubscription;
-
-  static const _userKey = 'onespase_user_name';
-  static const _handleKey = 'onespase_user_handle';
-  static const _bioKey = 'onespase_user_bio';
-  static const _statusKey = 'onespase_user_status';
-  static const _joinedKey = 'onespase_joined_at';
-  static const _postsKey = 'onespase_posts';
-  static const _messagesKey = 'onespase_messages';
-  static const _demoKey = 'onespase_demo_session';
-
-  String? userName;
-  String? userHandle;
-  String bio = 'Моё пространство в OneSpase 🚀';
-  String status = 'В сети';
-  String verification = 'none';
-  String profileTheme = 'purple';
-  String emojiStatus = '';
-  String musicTitle = '';
-  String featuredChannel = '';
-  DateTime? joinedAt;
-
-  String? authError;
-  bool authBusy = false;
-  bool demoSession = false;
-  bool isOwner = false;
-  bool accountAuthMode = false;
-  AuthStep authStep = AuthStep.choose;
-
-  List<AccountSlot> accountSlots = const [];
-  List<GiftItem> gifts = const [];
-  List<EmojiPack> emojiPacks = const [];
-
-  List<RemoteConversation> remoteConversations = const [];
-  bool conversationsBusy = false;
-
-  final List<LocalPost> posts = [];
-  final Map<String, List<ChatMessage>> chats = {};
-
-  final Map<String, String> chatTitles = const {
-    'alex': 'Алекс',
-    'dev': 'OneSpase Dev',
-    'team': 'Команда',
+  final List<UserProfile> users = [];
+  final List<AccountProfile> accounts = [];
+  final List<ChatThread> chats = [];
+  final List<PostItem> posts = [];
+  final List<GiftInstance> gifts = [];
+  final List<EmojiPack> emojiPacks = [];
+  final List<StoryItem> stories = [];
+  final Set<String> reservedUsernames = {
+    'onespase','roma','kotost','mzdiff','telegram','vk','discord','instagram','youtube','whatsapp','tiktok','facebook','signal'
   };
+  AppSettings settings = AppSettings();
+  String currentAccountId = '';
+  int cacheBytes = 0;
 
-  bool get onlineConfigured => supabase.enabled;
-  String? get currentUserId => supabase.currentUserId;
-  bool get isOnlineAccount =>
-      supabase.enabled && supabase.currentSession != null && !demoSession;
-  bool get isSignedIn => !accountAuthMode && (demoSession || (isOnlineAccount && userName != null));
+  String _id() => DateTime.now().microsecondsSinceEpoch.toString();
 
-  final List<SocialProfile> demoPeople = const [
-    SocialProfile(
-      id: 'demo_1',
-      displayName: 'Алекс',
-      username: 'alex_space',
-      status: 'Слушаю музыку',
-      bio: 'Тут будет профиль настоящего пользователя.',
-      online: true,
-      verification: 'blue',
-    ),
-    SocialProfile(
-      id: 'demo_2',
-      displayName: 'Мира',
-      username: 'mira',
-      status: 'Работаю',
-      bio: 'OneSpase beta',
-      online: false,
-      verification: 'purple',
-    ),
-    SocialProfile(
-      id: 'demo_3',
-      displayName: 'OneSpase Dev',
-      username: 'onespase',
-      status: 'Строим новое пространство 🚀',
-      bio: 'Официальный профиль разработки.',
-      online: true,
-      verification: 'red',
-    ),
-  ];
+  UserProfile get me {
+    final account = accounts.firstWhere((a) => a.id == currentAccountId, orElse: () => accounts.first);
+    return users.firstWhere((u) => u.id == account.userId);
+  }
+
+  List<GiftInstance> get myGifts => gifts.where((g) => g.receiverId == me.id && !g.hidden).toList()
+    ..sort((a,b) => (b.pinned ? 1 : 0).compareTo(a.pinned ? 1 : 0));
+  List<PostItem> get myPosts => posts.where((p) => p.authorId == me.id).toList();
+  bool get isPlus => me.plus;
+  int get maxAccounts => isPlus ? 5 : 2;
+  int get maxEmojiPacks => isPlus ? 20 : 3;
+  int get maxStories => isPlus ? 20 : 3;
+  List<String> get availableReactions => isPlus
+      ? const ['💜','👍','😂','🔥','🤯','👑','🚀','✨']
+      : const ['💜','👍','😂'];
+
+  List<StoryItem> get liveStories {
+    final list = stories.where((s) => !s.expired).toList();
+    list.sort((a,b) {
+      final ap = userById(a.authorId).plus ? 1 : 0;
+      final bp = userById(b.authorId).plus ? 1 : 0;
+      return bp.compareTo(ap);
+    });
+    return list;
+  }
 
   Future<void> load() async {
-    userName = await _store.getString(_userKey);
-    userHandle = await _store.getString(_handleKey);
-    bio = await _store.getString(_bioKey) ?? bio;
-    status = await _store.getString(_statusKey) ?? status;
-    final joinedRaw = await _store.getString(_joinedKey);
-    joinedAt = joinedRaw == null ? null : DateTime.tryParse(joinedRaw);
-    demoSession = await _store.getString(_demoKey) == 'true';
-
-    await _loadLocalContent();
-    accountSlots = await _vault.loadSlots();
-
-    if (supabase.enabled) {
-      _authSubscription ??= supabase.authSessionChanges.listen(
-        (_) async => _handleOnlineSession(),
-        onError: (Object error, StackTrace stackTrace) {
-          authError = _friendlyError(error);
-          notifyListeners();
-        },
-      );
-      await _handleOnlineSession();
-    }
-
-    notifyListeners();
-  }
-
-  Future<void> _handleOnlineSession() async {
-    if (!supabase.enabled || supabase.currentSession == null) {
-      if (!demoSession) {
-        userName = null;
-        userHandle = null;
-        verification = 'none';
-        isOwner = false;
-        authStep = AuthStep.choose;
-      }
-      notifyListeners();
-      return;
-    }
-
-    try {
-      final profile = await supabase.loadMyProfile();
-      if (profile == null ||
-          profile.displayName == 'Новый пользователь' ||
-          profile.username.startsWith('user_')) {
-        demoSession = false;
-        authStep = AuthStep.profile;
-        userName = null;
-        userHandle = null;
-      } else {
-        await _applyProfile(profile);
-        await supabase.setPresence(true);
-        await refreshConversations();
-        await refreshExtras();
-        await _saveCurrentAccountSlot();
-      }
-      isOwner = await supabase.isOwner();
-      accountAuthMode = false;
-    } catch (error) {
-      authError = _friendlyError(error);
-    }
-    notifyListeners();
-  }
-
-  Future<void> startGuest() async {
-    if (!supabase.enabled) {
-      authError = 'Сначала подключи Supabase к APK.';
-      notifyListeners();
-      return;
-    }
-
-    authBusy = true;
-    authError = null;
-    notifyListeners();
-    try {
-      await supabase.signInAnonymously();
-      demoSession = false;
-      authStep = AuthStep.profile;
-    } catch (error) {
-      authError = _friendlyError(error);
-    } finally {
-      authBusy = false;
-      notifyListeners();
-    }
-  }
-
-  void showEmailLogin() {
-    authError = null;
-    authStep = AuthStep.emailLogin;
-    notifyListeners();
-  }
-
-  void showEmailRegister() {
-    authError = null;
-    authStep = AuthStep.emailRegister;
-    notifyListeners();
-  }
-
-  void showAuthChoice() {
-    authError = null;
-    authStep = AuthStep.choose;
-    notifyListeners();
-  }
-
-  Future<void> registerWithEmail({
-    required String email,
-    required String password,
-  }) async {
-    if (!supabase.enabled) {
-      authError = 'Сначала подключи Supabase к APK.';
-      notifyListeners();
-      return;
-    }
-    if (!email.contains('@') || password.length < 8) {
-      authError = 'Нужна настоящая почта и пароль минимум из 8 символов.';
-      notifyListeners();
-      return;
-    }
-
-    authBusy = true;
-    authError = null;
-    notifyListeners();
-    try {
-      await supabase.signUpWithEmail(email: email, password: password);
-      if (supabase.currentSession == null) {
-        authError = 'Аккаунт создан. В Supabase включено подтверждение email — либо подтверди письмо, либо отключи Confirm email.';
-        authStep = AuthStep.emailLogin;
-      } else {
-        demoSession = false;
-        authStep = AuthStep.profile;
-      }
-    } catch (error) {
-      authError = _friendlyError(error);
-    } finally {
-      authBusy = false;
-      notifyListeners();
-    }
-  }
-
-  Future<void> loginWithEmail({
-    required String email,
-    required String password,
-  }) async {
-    if (!supabase.enabled) {
-      authError = 'Сначала подключи Supabase к APK.';
-      notifyListeners();
-      return;
-    }
-    authBusy = true;
-    authError = null;
-    notifyListeners();
-    try {
-      await supabase.signInWithEmail(email: email, password: password);
-      demoSession = false;
-      await _handleOnlineSession();
-    } catch (error) {
-      authError = _friendlyError(error);
-    } finally {
-      authBusy = false;
-      notifyListeners();
-    }
-  }
-
-  Future<void> prepareAddAccount() async {
-    await _saveCurrentAccountSlot();
-    accountAuthMode = true;
-    authStep = AuthStep.choose;
-    authError = null;
-    notifyListeners();
-  }
-
-  Future<void> cancelAddAccount() async {
-    accountAuthMode = false;
-    authError = null;
-    notifyListeners();
-  }
-
-  Future<void> switchAccount(String userId) async {
-    if (userId == currentUserId) {
-      accountAuthMode = false;
-      return;
-    }
-    authBusy = true;
-    authError = null;
-    notifyListeners();
-    try {
-      await _saveCurrentAccountSlot();
-      final token = await _vault.refreshTokenFor(userId);
-      if (token == null || token.isEmpty) {
-        throw StateError('Сессия этого аккаунта не сохранена. Войди в него заново.');
-      }
-      await supabase.restoreSession(token);
-      await _handleOnlineSession();
-    } catch (error) {
-      authError = _friendlyError(error);
-    } finally {
-      authBusy = false;
-      notifyListeners();
-    }
-  }
-
-  Future<void> removeSavedAccount(String userId) async {
-    if (userId == currentUserId) {
-      await logout();
-      return;
-    }
-    await _vault.removeAccount(userId);
-    accountSlots = await _vault.loadSlots();
-    notifyListeners();
-  }
-
-  Future<void> startGoogle() async {
-    if (!supabase.enabled) {
-      authError = 'Сначала подключи Supabase к APK.';
-      notifyListeners();
-      return;
-    }
-
-    authBusy = true;
-    authError = null;
-    notifyListeners();
-    try {
-      await supabase.signInWithGoogle();
-    } catch (error) {
-      authError = _friendlyError(error);
-    } finally {
-      authBusy = false;
-      notifyListeners();
-    }
-  }
-
-  Future<void> completeProfile({
-    required String name,
-    required String handle,
-    required String newStatus,
-  }) async {
-    final cleanedName = name.trim();
-    final cleanedHandle = _cleanHandle(handle);
-    if (cleanedName.length < 2) {
-      authError = 'Имя слишком короткое.';
-      notifyListeners();
-      return;
-    }
-    if (cleanedHandle.length < 3) {
-      authError = '@username должен быть минимум из 3 символов.';
-      notifyListeners();
-      return;
-    }
-
-    authBusy = true;
-    authError = null;
-    notifyListeners();
-    try {
-      if (isOnlineAccount) {
-        await supabase.saveMyProfile(
-          displayName: cleanedName,
-          username: cleanedHandle,
-          status: newStatus.trim().isEmpty ? 'В OneSpase' : newStatus.trim(),
-          bio: bio,
-          profileTheme: profileTheme,
-          emojiStatus: emojiStatus,
-          musicTitle: musicTitle,
-          featuredChannel: featuredChannel,
-        );
-      }
-
-      userName = cleanedName;
-      userHandle = cleanedHandle;
-      status = newStatus.trim().isEmpty ? 'В OneSpase' : newStatus.trim();
-      joinedAt ??= DateTime.now();
-      demoSession = !isOnlineAccount;
-      await _saveProfileLocally();
-
-      if (isOnlineAccount) {
-        final profile = await supabase.loadMyProfile();
-        if (profile != null) await _applyProfile(profile);
-        isOwner = await supabase.isOwner();
-      accountAuthMode = false;
-      }
-    } catch (error) {
-      authError = _friendlyError(error);
-    } finally {
-      authBusy = false;
-      notifyListeners();
-    }
-  }
-
-  Future<void> startDemo() async {
-    demoSession = true;
-    userName ??= 'Рома';
-    userHandle ??= 'roman';
-    joinedAt ??= DateTime.now();
-    verification = 'purple';
-    await _store.setString(_demoKey, 'true');
-    await _saveProfileLocally();
-    notifyListeners();
-  }
-
-  Future<void> logout() async {
-    final leavingUserId = currentUserId;
-    await supabase.signOut();
-    if (leavingUserId != null) await _vault.removeAccount(leavingUserId);
-    accountSlots = await _vault.loadSlots();
-    demoSession = false;
-    accountAuthMode = false;
-    userName = null;
-    userHandle = null;
-    joinedAt = null;
-    verification = 'none';
-    isOwner = false;
-    remoteConversations = const [];
-    authStep = AuthStep.choose;
-    authError = null;
-    await _store.remove(_demoKey);
-    await _store.remove(_userKey);
-    await _store.remove(_handleKey);
-    await _store.remove(_joinedKey);
-    notifyListeners();
-  }
-
-  Future<void> updateBio(String value) async {
-    bio = value.trim();
-    await _store.setString(_bioKey, bio);
-    await _syncProfileIfOnline();
-    notifyListeners();
-  }
-
-  Future<void> updateStatus(String value) async {
-    status = value.trim().isEmpty ? 'В сети' : value.trim();
-    await _store.setString(_statusKey, status);
-    await _syncProfileIfOnline();
-    notifyListeners();
-  }
-
-  Future<void> updateProfileCustomization({
-    required String theme,
-    required String newEmojiStatus,
-    required String newMusicTitle,
-    required String newFeaturedChannel,
-  }) async {
-    profileTheme = theme;
-    emojiStatus = newEmojiStatus.trim();
-    musicTitle = newMusicTitle.trim();
-    featuredChannel = newFeaturedChannel.trim();
-    await _syncProfileIfOnline();
-    notifyListeners();
-  }
-
-  Future<void> refreshExtras() async {
-    if (!isOnlineAccount) return;
-    try {
-      gifts = await supabase.myGifts();
-    } catch (_) {
-      gifts = const [];
-    }
-    try {
-      emojiPacks = await supabase.myEmojiPacks();
-    } catch (_) {
-      emojiPacks = const [];
-    }
-    notifyListeners();
-  }
-
-  Future<List<GiftItem>> loadGiftCatalog() async {
-    if (!isOnlineAccount) return const [];
-    return supabase.giftCatalog();
-  }
-
-  Future<void> sendGift({
-    required SocialProfile profile,
-    required GiftItem gift,
-    String? note,
-  }) async {
-    await supabase.sendGift(
-      targetUserId: profile.id,
-      giftSlug: gift.slug,
-      note: note,
-    );
-  }
-
-  Future<void> createEmojiPack({
-    required String title,
-    required String slug,
-    required List<String> emojis,
-  }) async {
-    await supabase.createEmojiPack(
-      title: title,
-      slug: slug,
-      emojis: emojis,
-    );
-    emojiPacks = await supabase.myEmojiPacks();
-    notifyListeners();
-  }
-
-  Future<void> setPresence(bool online) async {
-    if (!isOnlineAccount) return;
-    try {
-      await supabase.setPresence(online);
-    } catch (_) {}
-  }
-
-  Future<List<SocialProfile>> searchPeople(
-    String query, {
-    bool includeSelf = false,
-  }) async {
-    final clean = query.trim().toLowerCase().replaceAll('@', '');
-
-    if (isOnlineAccount) {
-      try {
-        return await supabase.searchProfiles(clean, includeSelf: includeSelf);
-      } catch (error) {
-        authError = _friendlyError(error);
-      }
-    }
-
-    if (clean.isEmpty) return demoPeople;
-    return demoPeople.where((profile) {
-      return profile.displayName.toLowerCase().contains(clean) ||
-          profile.username.toLowerCase().contains(clean);
-    }).toList();
-  }
-
-  Future<String?> startDirectChat(SocialProfile profile) async {
-    if (!isOnlineAccount) return null;
-    try {
-      final id = await supabase.startDirectConversation(profile.id);
-      await refreshConversations();
-      return id;
-    } catch (error) {
-      authError = _friendlyError(error);
-      notifyListeners();
-      return null;
-    }
-  }
-
-  Future<void> refreshConversations() async {
-    if (!isOnlineAccount) return;
-    conversationsBusy = true;
-    notifyListeners();
-    try {
-      remoteConversations = await supabase.listConversations();
-    } catch (error) {
-      authError = _friendlyError(error);
-    } finally {
-      conversationsBusy = false;
-      notifyListeners();
-    }
-  }
-
-  Stream<List<RemoteMessage>> remoteMessageStream(String conversationId) {
-    return supabase.streamMessages(conversationId);
-  }
-
-  Future<void> sendRemoteMessage(String conversationId, String text) async {
-    final clean = text.trim();
-    if (clean.isEmpty) return;
-    await supabase.sendMessage(conversationId, clean);
-  }
-
-  Future<void> editRemoteMessage(String messageId, String text) async {
-    final clean = text.trim();
-    if (clean.isEmpty) return;
-    await supabase.editMessage(messageId, clean);
-  }
-
-  Future<void> deleteRemoteMessage(String messageId) async {
-    await supabase.deleteMessage(messageId);
-  }
-
-  Future<void> markConversationRead(String conversationId) async {
-    try {
-      await supabase.markConversationRead(conversationId);
-    } catch (_) {}
-  }
-
-  Future<void> setVerificationBadge({
-    required SocialProfile profile,
-    required String badge,
-    String? reason,
-  }) async {
-    if (!isOwner) throw StateError('Доступ только владельцу OneSpase.');
-    await supabase.setVerificationBadge(
-      targetUserId: profile.id,
-      badge: badge,
-      reason: reason,
-    );
-    if (profile.id == currentUserId) {
-      verification = badge;
-      notifyListeners();
-    }
-  }
-
-  Future<List<Map<String, dynamic>>> loadBadgeAudit() {
-    return supabase.badgeAudit();
-  }
-
-  Future<void> reserveUsername({
-    required String username,
-    SocialProfile? forProfile,
-    String? reason,
-  }) async {
-    if (!isOwner) throw StateError('Доступ только владельцу OneSpase.');
-    await supabase.reserveUsername(
-      username: username.trim().replaceAll('@', '').toLowerCase(),
-      targetUserId: forProfile?.id,
-      reason: reason,
-    );
-  }
-
-  Future<void> addPost(String text) async {
-    final cleaned = text.trim();
-    if (cleaned.isEmpty || userName == null) return;
-    posts.insert(
-      0,
-      LocalPost(
-        id: DateTime.now().microsecondsSinceEpoch.toString(),
-        author: userName!,
-        text: cleaned,
-        createdAt: DateTime.now(),
-      ),
-    );
-    await _savePosts();
-    notifyListeners();
-  }
-
-  Future<void> toggleLike(LocalPost post) async {
-    if (post.likedByMe) {
-      post.likedByMe = false;
-      if (post.likes > 0) post.likes--;
+    final data = await repo.load();
+    if (data == null) {
+      _seed();
+      await save();
     } else {
-      post.likedByMe = true;
-      post.likes++;
+      _fromJson(data);
     }
-    await _savePosts();
+    cacheBytes = await repo.approxBytes();
     notifyListeners();
   }
 
-  Future<void> addComment(LocalPost post, String text) async {
-    final cleaned = text.trim();
-    if (cleaned.isEmpty) return;
-    post.comments.add(cleaned);
-    await _savePosts();
+  void _seed() {
+    users
+      ..clear()
+      ..addAll([
+        UserProfile(id:'u_roma', name:'Рома', username:'roma', verification:'red', emojiStatus:'🚀', status:'Делаю OneSpase', music:'Night Drive', channel:'mzdiff', theme:'purple'),
+        UserProfile(id:'u_mira', name:'Мира', username:'mira', verification:'purple', emojiStatus:'✨', status:'Работаю', bio:'Менеджер проекта OneSpase', music:'Lo-fi evening', theme:'mint'),
+        UserProfile(id:'u_alex', name:'Алекс', username:'alex_space', verification:'blue', status:'В сети', bio:'Игры, мемы и немного хаоса', theme:'blue'),
+        UserProfile(id:'u_dev', name:'OneSpase', username:'onespase', verification:'red', emojiStatus:'🛰️', status:'Официальный аккаунт', bio:'Строим новое пространство.', theme:'purple', plus:true),
+      ]);
+    accounts
+      ..clear()
+      ..addAll([
+        AccountProfile(id:'acc_main', userId:'u_roma', label:'Основной'),
+        AccountProfile(id:'acc_mira', userId:'u_mira', label:'Второй аккаунт'),
+      ]);
+    currentAccountId = 'acc_main';
+
+    chats
+      ..clear()
+      ..addAll([
+        ChatThread(id:'saved', title:'Избранное', kind:'saved', peerId:'u_roma', messages:[
+          ChatMessage(id:'m1', senderId:'u_roma', text:'Сюда можно сохранять заметки и важные сообщения.', sentAt:DateTime.now().subtract(const Duration(hours:3))),
+        ])..pinned = true,
+        ChatThread(id:'chat_mira', title:'Мира', kind:'personal', peerId:'u_mira', messages:[
+          ChatMessage(id:'m2', senderId:'u_mira', text:'Я проверила новую версию, выглядит уютно 👀', sentAt:DateTime.now().subtract(const Duration(minutes:40))),
+          ChatMessage(id:'m3', senderId:'u_roma', text:'Ща ещё подарки добавим', sentAt:DateTime.now().subtract(const Duration(minutes:35))),
+        ]),
+        ChatThread(id:'group_dev', title:'OneSpase Dev', kind:'group', peerId:'u_dev', messages:[
+          ChatMessage(id:'m4', senderId:'u_dev', text:'v0.7 теперь работает локально без Supabase.', sentAt:DateTime.now().subtract(const Duration(minutes:10))),
+        ]),
+        ChatThread(id:'channel_news', title:'OneSpase News', kind:'channel', peerId:'u_dev', messages:[
+          ChatMessage(id:'m5', senderId:'u_dev', text:'Первый подарок — «Секретный пакетик».', sentAt:DateTime.now().subtract(const Duration(minutes:5))),
+        ]),
+      ]);
+
+    posts
+      ..clear()
+      ..addAll([
+        PostItem(id:'p1', authorId:'u_dev', text:'OneSpase v0.7: делаем приложение полностью кликабельным даже без сервера 🚀', createdAt:DateTime.now().subtract(const Duration(hours:2)), likes:27, comments:4),
+        PostItem(id:'p2', authorId:'u_mira', text:'Тёмная тема + большие карточки = оставляем.', createdAt:DateTime.now().subtract(const Duration(hours:1)), likes:13, comments:2),
+      ]);
+
+    gifts
+      ..clear()
+      ..add(GiftInstance(id:'g1', slug:'secret_packet', senderId:'u_dev', receiverId:'u_roma', serial:1, sentAt:DateTime.now().subtract(const Duration(days:1)), note:'Первый официальный подарок OneSpase', pinned:true));
+
+    emojiPacks
+      ..clear()
+      ..add(EmojiPack(id:'e1', title:'Kotost', slug:'kotost', items:['🐱','😭','💜','🚀']));
+
+    stories
+      ..clear()
+      ..addAll([
+        StoryItem(id:'s1', authorId:'u_mira', text:'Новая версия уже на подходе ✨', createdAt:DateTime.now().subtract(const Duration(hours:2))),
+        StoryItem(id:'s2', authorId:'u_dev', text:'OneSpase Offline Prototype', createdAt:DateTime.now().subtract(const Duration(hours:4)), pinned:true),
+      ]);
+    settings = AppSettings();
+  }
+
+  UserProfile userById(String id) => users.firstWhere((u) => u.id == id, orElse: () => me);
+  ChatThread chatById(String id) => chats.firstWhere((c) => c.id == id);
+
+  Future<void> save() async {
+    await repo.save(_toJson());
+    cacheBytes = await repo.approxBytes();
     notifyListeners();
   }
 
-  Future<void> sendMessage(String chatId, String text) async {
-    final cleaned = text.trim();
-    if (cleaned.isEmpty) return;
-    final list = chats.putIfAbsent(chatId, () => []);
-    list.add(
-      ChatMessage(
-        id: DateTime.now().microsecondsSinceEpoch.toString(),
-        text: cleaned,
-        sentAt: DateTime.now(),
-        fromMe: true,
-      ),
-    );
-    await _saveChats();
-    notifyListeners();
+  Map<String,dynamic> _toJson() => {
+    'users': users.map((e)=>e.toJson()).toList(),
+    'accounts': accounts.map((e)=>e.toJson()).toList(),
+    'currentAccountId': currentAccountId,
+    'chats': chats.map((e)=>e.toJson()).toList(),
+    'posts': posts.map((e)=>e.toJson()).toList(),
+    'gifts': gifts.map((e)=>e.toJson()).toList(),
+    'emojiPacks': emojiPacks.map((e)=>e.toJson()).toList(),
+    'stories': stories.map((e)=>e.toJson()).toList(),
+    'settings': settings.toJson(),
+    'reservedUsernames': reservedUsernames.toList(),
+  };
+
+  void _fromJson(Map<String,dynamic> d) {
+    users..clear()..addAll(((d['users'] as List?)??[]).map((e)=>UserProfile.fromJson(Map<String,dynamic>.from(e as Map))));
+    accounts..clear()..addAll(((d['accounts'] as List?)??[]).map((e)=>AccountProfile.fromJson(Map<String,dynamic>.from(e as Map))));
+    currentAccountId = '${d['currentAccountId'] ?? ''}';
+    chats..clear()..addAll(((d['chats'] as List?)??[]).map((e)=>ChatThread.fromJson(Map<String,dynamic>.from(e as Map))));
+    posts..clear()..addAll(((d['posts'] as List?)??[]).map((e)=>PostItem.fromJson(Map<String,dynamic>.from(e as Map))));
+    gifts..clear()..addAll(((d['gifts'] as List?)??[]).map((e)=>GiftInstance.fromJson(Map<String,dynamic>.from(e as Map))));
+    emojiPacks..clear()..addAll(((d['emojiPacks'] as List?)??[]).map((e)=>EmojiPack.fromJson(Map<String,dynamic>.from(e as Map))));
+    stories..clear()..addAll(((d['stories'] as List?)??[]).map((e)=>StoryItem.fromJson(Map<String,dynamic>.from(e as Map))));
+    settings = d['settings'] is Map ? AppSettings.fromJson(Map<String,dynamic>.from(d['settings'] as Map)) : AppSettings();
+    if (d['reservedUsernames'] is List) reservedUsernames.addAll((d['reservedUsernames'] as List).map((e)=>'$e'));
+    if (users.isEmpty || accounts.isEmpty) _seed();
+    if (!accounts.any((a)=>a.id == currentAccountId)) currentAccountId = accounts.first.id;
   }
 
-  String lastMessage(String chatId) {
-    final list = chats[chatId] ?? const [];
-    if (list.isEmpty) return 'Сообщений пока нет';
-    return list.last.text;
+  Future<String?> addAccount(String name, String username) async {
+    if (accounts.length >= maxAccounts) {
+      return isPlus ? 'Достигнут лимит $maxAccounts аккаунтов' : 'В бесплатной версии доступно 2 аккаунта. OneSpase Plus — до 5.';
+    }
+    final clean = username.toLowerCase().replaceAll('@','').trim();
+    if (clean.length < 3) return 'Username слишком короткий';
+    if (reservedUsernames.contains(clean) || users.any((u)=>u.username.toLowerCase()==clean)) return '@$clean уже занят или зарезервирован';
+    final uid = 'u_${_id()}';
+    final aid = 'acc_${_id()}';
+    users.add(UserProfile(id:uid, name:name.trim().isEmpty ? 'Новый пользователь' : name.trim(), username:clean));
+    accounts.add(AccountProfile(id:aid, userId:uid, label:'Дополнительный'));
+    currentAccountId = aid;
+    chats.insert(0, ChatThread(id:'saved_$uid', title:'Избранное', kind:'saved', peerId:uid));
+    await save();
+    return null;
   }
 
-  Future<void> _applyProfile(SocialProfile profile) async {
-    userName = profile.displayName;
-    userHandle = profile.username;
-    status = profile.status;
-    bio = profile.bio.isEmpty ? bio : profile.bio;
-    verification = profile.verification;
-    profileTheme = profile.profileTheme;
-    emojiStatus = profile.emojiStatus;
-    musicTitle = profile.musicTitle;
-    featuredChannel = profile.featuredChannel;
-    joinedAt ??= DateTime.now();
-    demoSession = false;
-    await _store.remove(_demoKey);
-    await _saveProfileLocally();
+  Future<void> switchAccount(String id) async { currentAccountId = id; await save(); }
+  Future<void> removeAccount(String id) async {
+    if (accounts.length <= 1) return;
+    final account = accounts.firstWhere((a)=>a.id==id);
+    accounts.remove(account);
+    if (currentAccountId == id) currentAccountId = accounts.first.id;
+    await save();
   }
 
-  Future<void> _loadLocalContent() async {
-    final storedPosts = await _store.getJsonList(_postsKey);
-    if (storedPosts == null) {
-      posts.addAll(_defaultPosts());
-      await _savePosts();
-    } else {
-      posts
-        ..clear()
-        ..addAll(
-          storedPosts.map(
-            (item) => LocalPost.fromJson(
-              Map<String, dynamic>.from(item as Map),
-            ),
-          ),
-        );
-    }
-
-    final storedMessages = await _store.getJsonMap(_messagesKey);
-    if (storedMessages == null) {
-      chats.addAll(_defaultChats());
-      await _saveChats();
-    } else {
-      chats.clear();
-      for (final entry in storedMessages.entries) {
-        final items = entry.value as List<dynamic>;
-        chats[entry.key] = items
-            .map(
-              (item) => ChatMessage.fromJson(
-                Map<String, dynamic>.from(item as Map),
-              ),
-            )
-            .toList();
-      }
-    }
+  Future<String?> updateProfile({required String name, required String username, required String bio, required String status}) async {
+    final clean = username.toLowerCase().replaceAll('@','').trim();
+    final original = me.username.toLowerCase();
+    if (clean != original && (reservedUsernames.contains(clean) || users.any((u)=>u.id != me.id && u.username.toLowerCase()==clean))) return '@$clean недоступен';
+    me.name = name.trim().isEmpty ? me.name : name.trim(); me.username = clean; me.bio = bio.trim(); me.status = status.trim().isEmpty ? 'В сети' : status.trim();
+    await save(); return null;
   }
 
-  Future<void> _saveProfileLocally() async {
-    if (userName != null) await _store.setString(_userKey, userName!);
-    if (userHandle != null) await _store.setString(_handleKey, userHandle!);
-    await _store.setString(_bioKey, bio);
-    await _store.setString(_statusKey, status);
-    if (joinedAt != null) {
-      await _store.setString(_joinedKey, joinedAt!.toIso8601String());
-    }
+  Future<void> customize({required String theme, required String emoji, required String music, required String channel}) async {
+    me.theme=theme; me.emojiStatus=emoji.trim(); me.music=music.trim(); me.channel=channel.replaceAll('@','').trim(); await save();
   }
 
-  Future<void> _syncProfileIfOnline() async {
-    if (!isOnlineAccount || userName == null || userHandle == null) return;
-    try {
-      await supabase.saveMyProfile(
-        displayName: userName!,
-        username: userHandle!,
-        status: status,
-        bio: bio,
-        profileTheme: profileTheme,
-        emojiStatus: emojiStatus,
-        musicTitle: musicTitle,
-        featuredChannel: featuredChannel,
-      );
-    } catch (_) {}
+  Future<String?> createEmojiPack(String title, String slug, List<String> items) async {
+    if (emojiPacks.length >= maxEmojiPacks) {
+      return isPlus ? 'Достигнут лимит $maxEmojiPacks emoji-паков' : 'В бесплатной версии можно создать 3 emoji-пака. OneSpase Plus — до 20.';
+    }
+    emojiPacks.add(EmojiPack(id:_id(), title:title.trim(), slug:slug.trim().replaceAll(' ','_'), items:items)); await save();
+    return null;
   }
+  Future<void> deleteEmojiPack(String id) async { emojiPacks.removeWhere((e)=>e.id==id); await save(); }
 
-  String _cleanHandle(String input) {
-    return input
-        .trim()
-        .replaceAll('@', '')
-        .replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '')
-        .toLowerCase();
+  Future<void> sendMessage(String chatId, String text, {String? replyTo}) async {
+    if (text.trim().isEmpty) return;
+    final c=chatById(chatId); c.messages.add(ChatMessage(id:_id(), senderId:me.id, text:text.trim(), sentAt:DateTime.now(), replyTo:replyTo)); c.draft=''; await save();
   }
+  Future<void> editMessage(String chatId, String messageId, String text) async { final m=chatById(chatId).messages.firstWhere((m)=>m.id==messageId); m.text=text; m.edited=true; await save(); }
+  Future<void> deleteMessage(String chatId, String messageId) async { chatById(chatId).messages.removeWhere((m)=>m.id==messageId); await save(); }
+  Future<void> react(String chatId, String messageId, String reaction) async { chatById(chatId).messages.firstWhere((m)=>m.id==messageId).reaction=reaction; await save(); }
+  Future<void> setDraft(String chatId, String value) async { chatById(chatId).draft=value; await save(); }
+  Future<void> togglePinChat(String chatId) async { final c=chatById(chatId); c.pinned=!c.pinned; await save(); }
+  Future<void> toggleArchive(String chatId) async { final c=chatById(chatId); c.archived=!c.archived; await save(); }
+  Future<void> toggleMute(String chatId) async { final c=chatById(chatId); c.muted=!c.muted; await save(); }
 
-  String _friendlyError(Object error) {
-    final text = error.toString();
-    final low = text.toLowerCase();
-    if (low.contains('anonymous') && low.contains('disabled')) {
-      return 'В Supabase нужно включить Anonymous Sign-Ins.';
-    }
-    if (low.contains('provider') && low.contains('disabled')) {
-      return 'Этот способ входа ещё не включён в Supabase.';
-    }
-    if (low.contains('rate')) {
-      return 'Слишком много попыток. Попробуй чуть позже.';
-    }
-    if (low.contains('reserved username') || low.contains('protected username')) {
-      return 'Этот @username зарезервирован. Для официальных названий нужно обратиться к владельцу OneSpase.';
-    }
-    if (low.contains('invalid login credentials')) {
-      return 'Неверная почта или пароль.';
-    }
-    if (low.contains('user already registered')) {
-      return 'Аккаунт с такой почтой уже существует.';
-    }
-    if (low.contains('duplicate') || low.contains('unique')) {
-      return 'Такой @username уже занят.';
-    }
-    return text.replaceFirst('Exception: ', '');
+  Future<void> createPost(String text) async { if(text.trim().isEmpty)return; posts.insert(0, PostItem(id:_id(), authorId:me.id, text:text.trim(), createdAt:DateTime.now())); await save(); }
+  Future<void> deletePost(String id) async { posts.removeWhere((p)=>p.id==id && p.authorId==me.id); await save(); }
+  Future<void> toggleLike(String id) async { final p=posts.firstWhere((p)=>p.id==id); p.liked=!p.liked; p.likes += p.liked ? 1 : -1; await save(); }
+  Future<void> addComment(String id) async { final p=posts.firstWhere((p)=>p.id==id); p.comments++; await save(); }
+  Future<void> toggleSavedPost(String id) async { final p=posts.firstWhere((p)=>p.id==id); p.saved=!p.saved; await save(); }
+
+  Future<String?> createStory(String text) async {
+    if(text.trim().isEmpty) return 'Story пустая';
+    final active = stories.where((s)=>s.authorId==me.id && !s.expired).length;
+    if(active >= maxStories) return isPlus ? 'Достигнут лимит $maxStories активных Stories' : 'В бесплатной версии доступно 3 активных Stories. OneSpase Plus — до 20.';
+    stories.insert(0, StoryItem(id:_id(), authorId:me.id, text:text.trim(), createdAt:DateTime.now()));
+    await save();
+    return null;
   }
+  Future<void> toggleStoryPin(String id) async { final s=stories.firstWhere((s)=>s.id==id); s.pinned=!s.pinned; await save(); }
+  Future<void> deleteStory(String id) async { stories.removeWhere((s)=>s.id==id); await save(); }
 
-  Future<void> _savePosts() => _store.setJson(
-        _postsKey,
-        posts.map((post) => post.toJson()).toList(),
-      );
+  Future<void> follow(String userId) async { final u=userById(userId); u.following=!u.following; await save(); }
+  Future<void> block(String userId) async { final u=userById(userId); u.blocked=!u.blocked; await save(); }
 
-  Future<void> _saveChats() {
-    final data = <String, dynamic>{};
-    for (final entry in chats.entries) {
-      data[entry.key] = entry.value.map((message) => message.toJson()).toList();
-    }
-    return _store.setJson(_messagesKey, data);
+  Future<void> sendSecretPacket(String receiverId, {String note=''}) async {
+    final next = gifts.where((g)=>g.slug=='secret_packet').length + 1;
+    gifts.add(GiftInstance(id:_id(), slug:'secret_packet', senderId:me.id, receiverId:receiverId, serial:next, sentAt:DateTime.now(), note:note)); await save();
   }
+  Future<void> toggleGiftPin(String id) async { final g=gifts.firstWhere((g)=>g.id==id); g.pinned=!g.pinned; await save(); }
+  Future<void> hideGift(String id) async { gifts.firstWhere((g)=>g.id==id).hidden=true; await save(); }
 
-  List<LocalPost> _defaultPosts() => [
-        LocalPost(
-          id: 'welcome',
-          author: 'OneSpase',
-          text:
-              'Добро пожаловать в OneSpase 🚀 v0.6 добавляет аккаунты, подарки, emoji-паки и оформление профиля.',
-          createdAt: DateTime.now().subtract(const Duration(minutes: 18)),
-          likes: 15,
-          comments: ['Погнали!'],
-        ),
-        LocalPost(
-          id: 'dev_post',
-          author: 'OneSpase Dev',
-          text:
-              'Новая иконка, гостевой вход, Google OAuth, реальные личные сообщения и система галочек.',
-          createdAt: DateTime.now().subtract(const Duration(hours: 2)),
-          likes: 11,
-        ),
-      ];
+  Future<void> setPlus(bool value) async { me.plus = value; await save(); }
 
-  Map<String, List<ChatMessage>> _defaultChats() => {
-        'alex': [
-          ChatMessage(
-            id: 'a1',
-            text: 'Йо! Это демо-чат. Онлайн-чаты появятся после подключения Supabase.',
-            sentAt: DateTime.now().subtract(const Duration(minutes: 12)),
-            fromMe: false,
-          ),
-        ],
-        'dev': [
-          ChatMessage(
-            id: 'd1',
-            text: 'v0.6 уже тут 🚀',
-            sentAt: DateTime.now().subtract(const Duration(hours: 1)),
-            fromMe: false,
-          ),
-        ],
-        'team': [
-          ChatMessage(
-            id: 't1',
-            text: 'Owner Panel и галочки защищены на стороне базы.',
-            sentAt: DateTime.now().subtract(const Duration(hours: 3)),
-            fromMe: false,
-          ),
-        ],
-      };
+  Future<void> setVerification(String userId, String value) async { userById(userId).verification=value; await save(); }
+  Future<void> reserveUsername(String value) async { final v=value.toLowerCase().replaceAll('@','').trim(); if(v.isNotEmpty) reservedUsernames.add(v); await save(); }
 
-  Future<void> _saveCurrentAccountSlot() async {
-    final session = supabase.currentSession;
-    final profileName = userName;
-    final profileHandle = userHandle;
-    if (!isOnlineAccount ||
-        session == null ||
-        profileName == null ||
-        profileHandle == null) {
-      return;
-    }
-    await _vault.saveAccount(
-      slot: AccountSlot(
-        userId: session.user.id,
-        label: profileName,
-        username: profileHandle,
-        email: session.user.email,
-      ),
-      refreshToken: session.refreshToken,
-    );
-    accountSlots = await _vault.loadSlots();
-  }
-
-  @override
-  void dispose() {
-    _authSubscription?.cancel();
-    super.dispose();
-  }
+  Future<void> updateSettings() async => save();
+  Future<void> clearChatCache() async { for(final c in chats){ if(c.kind!='saved') c.messages.clear(); } await save(); }
+  Future<void> resetDemo() async { _seed(); await save(); }
 }

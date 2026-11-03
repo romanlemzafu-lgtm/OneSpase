@@ -1,8 +1,47 @@
-# OneSpase v0.6.0
+# OneSpase v0.7.1 Offline + Plus
 
-OneSpase — тёмный уютный мессенджер + соцсеть на Flutter/Supabase.
+Локальная версия OneSpase без Supabase. В этой версии добавлен рабочий прототип подписки **OneSpase Plus** без реальных платежей.
 
-Эта версия добавляет нормальную регистрацию внутри APK, мультиаккаунт, защищённые usernames,
-подарки, Emoji Studio и кастомизацию профиля поверх v0.5 real-time messenger foundation.
+## OneSpase Plus
+- локальная активация/деактивация на каждом аккаунте;
+- Plus badge возле имени;
+- градиентная рамка аватара;
+- до 5 локальных аккаунтов вместо 2;
+- до 20 emoji-паков вместо 3;
+- до 20 активных Stories вместо 3;
+- Plus-Stories поднимаются выше в локальной ленте Stories;
+- расширенные реакции: 🔥 🤯 👑 🚀 ✨;
+- эксклюзивные темы профиля: Aurora, Midnight, Gold.
 
-Смотри `SETUP_V0_6.md`, затем запускай `supabase/v0_6_migration.sql`.
+Базовые чаты, лента, подарки, Stories и профили остаются бесплатными. Реальная оплата и Google Play Billing пока не подключены.
+
+## Остальные функции
+- Лента, Stories, посты, лайки и сохранение.
+- Чаты: личные, группы, каналы, Избранное, папки, архив, pin, mute, drafts, поиск.
+- Сообщения: отправка, reply, edit, delete, реакции.
+- Несколько локальных аккаунтов и переключение.
+- Профиль: username, bio, status, verification, emoji-status, музыка, канал, темы.
+- Emoji Studio.
+- Конфиденциальность, уведомления, данные и память.
+- Owner Panel и зарезервированные usernames.
+- Первый подарок «Секретный пакетик» с Flutter-анимацией.
+- Все данные сохраняются через SharedPreferences.
+
+## Не подключено
+- Supabase / Auth / Realtime / Storage.
+- Реальные платежи.
+- Настоящие push-уведомления.
+- Настоящие голосовые/видеозвонки.
+- Реальная загрузка медиа.
+- E2EE.
+
+## Сборка
+GitHub Actions запускает:
+
+```bash
+flutter pub get
+flutter analyze
+flutter build apk --release
+```
+
+Artifact: `OneSpase-v0.7.1-Plus-APK`.
